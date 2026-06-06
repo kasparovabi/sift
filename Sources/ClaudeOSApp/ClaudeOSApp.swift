@@ -65,6 +65,12 @@ struct ClaudeOSApp: App {
         let ingester = BrainIngester(service: brain)
         runtime.onSessionFinished = { cwd, sid in ingester.ingestFinished(cwd: cwd, claudeSessionId: sid) }
 
+        // Periodic + on-launch Forgetter sweep (drops low-importance, aged, never-retrieved atoms).
+        DispatchQueue.global(qos: .utility).async { _ = try? brain.forget() }
+        Timer.scheduledTimer(withTimeInterval: 86_400, repeats: true) { _ in
+            DispatchQueue.global(qos: .utility).async { _ = try? brain.forget() }
+        }
+
         _index = State(initialValue: index)
         _runtime = State(initialValue: runtime)
         _monitor = State(initialValue: monitor)
