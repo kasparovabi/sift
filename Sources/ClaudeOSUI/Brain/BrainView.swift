@@ -10,13 +10,17 @@ public struct BrainView: View {
     public init() {}
 
     public var body: some View {
-        HSplitView {
-            listPane
-                .frame(minWidth: 300, idealWidth: 360)
-            detailPane
-                .frame(minWidth: 240)
+        VStack(spacing: 0) {
+            headerBar
+            Divider()
+            HSplitView {
+                listPane
+                    .frame(minWidth: 300, idealWidth: 360, maxHeight: .infinity)
+                detailPane
+                    .frame(minWidth: 240, maxHeight: .infinity)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .toolbar { toolbarContent }
         .onAppear { vm.reload() }
     }
 
@@ -28,6 +32,7 @@ public struct BrainView: View {
             Divider()
             atomList
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
     private var searchBar: some View {
@@ -60,7 +65,8 @@ public struct BrainView: View {
         return List(vm.atoms, selection: $bvm.selectedAtomId) { atom in
             AtomRow(atom: atom)
         }
-        .listStyle(.sidebar)
+        .listStyle(.inset)
+        .frame(maxHeight: .infinity)
     }
 
     // MARK: - Detail pane
@@ -77,20 +83,19 @@ public struct BrainView: View {
         }
     }
 
-    // MARK: - Toolbar
+    // MARK: - Header bar
 
-    @ToolbarContentBuilder private var toolbarContent: some ToolbarContent {
-        ToolbarItem(placement: .automatic) {
-            HStack(spacing: 8) {
-                Label("\(vm.atoms.count) atom", systemImage: "circle.grid.3x3")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Label("\(vm.entities.count) varlık", systemImage: "person.2")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        ToolbarItem(placement: .automatic) {
+    private var headerBar: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "brain")
+                .foregroundStyle(.purple)
+            Label("\(vm.atoms.count) atom", systemImage: "circle.grid.3x3")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Label("\(vm.entities.count) varlık", systemImage: "person.2")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer()
             Button {
                 let n = vm.forget()
                 forgottenCount = n
@@ -100,14 +105,18 @@ public struct BrainView: View {
                 }
             } label: {
                 if let n = forgottenCount {
-                    Label("\(n) silindi", systemImage: "trash")
-                        .foregroundStyle(.orange)
+                    Label("\(n) silindi", systemImage: "trash").foregroundStyle(.orange)
                 } else {
-                    Label("Unut (temizle)", systemImage: "trash")
+                    Label("Unut", systemImage: "trash")
                 }
             }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
             .help("Düşük önemli, eski ve hiç erişilmemiş atomları temizle")
         }
+        .padding(.horizontal, 12)
+        .frame(height: 34)
+        .background(.ultraThinMaterial)
     }
 }
 
