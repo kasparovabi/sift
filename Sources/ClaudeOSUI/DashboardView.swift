@@ -29,6 +29,7 @@ struct DashboardView: View {
         }
         .task(id: index.totalSessionCount) { await load() }
         .onChange(of: runtime.sessions.count) { _, _ in Task { await load() } }
+        .onChange(of: index.metaStore.metas) { _, _ in Task { await load() } }
     }
 
     private func load() async {

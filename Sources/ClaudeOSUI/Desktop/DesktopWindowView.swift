@@ -76,11 +76,18 @@ struct DesktopWindowView<Content: View>: View {
                                         y: max(0, window.origin.y + value.translation.height))
                     dragTranslation = .zero
                     let canvas = manager.canvasSize
-                    if final.y <= 4 {
+                    // Only snap on a deliberate drag toward an edge. A small nudge on a
+                    // window that already sits near the edge should just move it, so the
+                    // user can park a window flush at the top/left corner.
+                    let moved = hypot(value.translation.width, value.translation.height)
+                    // Use the unclamped predicted y for the top test, otherwise the
+                    // max(0, …) clamp above would make the top zone impossible to avoid.
+                    let rawY = window.origin.y + value.translation.height
+                    if moved > 24, rawY <= 4 {
                         manager.snap(window.id, .top)
-                    } else if final.x <= 4 {
+                    } else if moved > 24, final.x <= 4 {
                         manager.snap(window.id, .left)
-                    } else if canvas.width > 0, final.x + window.size.width >= canvas.width - 4 {
+                    } else if moved > 24, canvas.width > 0, final.x + window.size.width >= canvas.width - 4 {
                         manager.snap(window.id, .right)
                     } else {
                         manager.move(window.id, to: final)

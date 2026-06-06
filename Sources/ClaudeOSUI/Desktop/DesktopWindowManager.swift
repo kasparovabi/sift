@@ -121,11 +121,13 @@ public final class DesktopWindowManager {
     public func move(_ id: UUID, to origin: CGPoint) {
         guard let index = windows.firstIndex(where: { $0.id == id }) else { return }
         windows[index].origin = origin
+        windows[index].restoreFrame = nil
     }
 
     public func resize(_ id: UUID, to size: CGSize) {
         guard let index = windows.firstIndex(where: { $0.id == id }) else { return }
         windows[index].size = CGSize(width: max(320, size.width), height: max(220, size.height))
+        windows[index].restoreFrame = nil
     }
 
     /// Toggle a window between filling the desktop and its previous frame.
@@ -137,10 +139,10 @@ public final class DesktopWindowManager {
             windows[index].restoreFrame = nil
         } else {
             windows[index].restoreFrame = CGRect(origin: windows[index].origin, size: windows[index].size)
-            windows[index].origin = CGPoint(x: 12, y: 8)
+            windows[index].origin = CGPoint(x: 12, y: 30)        // clear the 28pt top bar
             windows[index].size = CGSize(
                 width: max(420, canvasSize.width - 24),
-                height: max(300, canvasSize.height - 24 - 90)  // room for top bar + dock
+                height: max(300, canvasSize.height - 30 - 80)  // top bar (30) + dock (80) reserved
             )
         }
         windows[index].z = nextZ()
@@ -166,8 +168,8 @@ public final class DesktopWindowManager {
             windows[index].origin = CGPoint(x: canvasSize.width / 2, y: area.top)
             windows[index].size = CGSize(width: canvasSize.width / 2, height: area.height)
         case .top:
-            windows[index].origin = CGPoint(x: 12, y: area.top - 22)
-            windows[index].size = CGSize(width: max(420, canvasSize.width - 24), height: area.height + 22)
+            windows[index].origin = CGPoint(x: 12, y: area.top)
+            windows[index].size = CGSize(width: max(420, canvasSize.width - 24), height: area.height)
         }
         windows[index].z = nextZ()
     }

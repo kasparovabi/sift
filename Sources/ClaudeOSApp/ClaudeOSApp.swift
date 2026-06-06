@@ -130,6 +130,32 @@ struct ClaudeOSApp: App {
                 Button("Pencereleri döşe") { windows.tileWindows() }
                     .keyboardShortcut("t", modifiers: [.command, .control])
             }
+            // Re-bind ⌘W away from the host WindowGroup (which would close the whole
+            // emulated desktop) to closing only the frontmost emulated window. The
+            // frontmost window is the highest-z non-minimized one. No emulated window
+            // open => no-op, which is preferable to nuking the desktop.
+            CommandGroup(replacing: .saveItem) {
+                Button("Pencereyi kapat") {
+                    if let front = windows.windows.filter({ !$0.minimized }).max(by: { $0.z < $1.z }) {
+                        windows.close(front.id)
+                    }
+                }
+                .keyboardShortcut("w", modifiers: .command)
+            }
+            CommandGroup(after: .windowArrangement) {
+                Button("Pencereyi küçült") {
+                    if let front = windows.windows.filter({ !$0.minimized }).max(by: { $0.z < $1.z }) {
+                        windows.minimize(front.id)
+                    }
+                }
+                .keyboardShortcut("m", modifiers: .command)
+                Button("Sonraki pencere") {
+                    if let lowest = windows.windows.filter({ !$0.minimized }).min(by: { $0.z < $1.z }) {
+                        windows.focus(lowest.id)
+                    }
+                }
+                .keyboardShortcut("`", modifiers: .command)
+            }
             CommandGroup(after: .sidebar) {
                 Button("Tüm oturumlar") { index.sidebarSelection = .all }
                     .keyboardShortcut("1", modifiers: .command)

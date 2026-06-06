@@ -33,7 +33,6 @@ public struct DesktopView: View {
                         }
                     }
                 }
-                .padding(.top, 28)
                 VStack(spacing: 0) {
                     DesktopTopBar()
                     Spacer()
@@ -53,7 +52,7 @@ public struct DesktopView: View {
                 if manager.windows.isEmpty { manager.openFinder() }
                 if ProcessInfo.processInfo.environment["CLAUDEOS_OPEN_BRAIN"] == "1" { manager.openBrain() }
             }
-            .task(id: index.metaStore.metas.count) {
+            .task(id: index.metaStore.metas.mapValues(\.pinned)) {
                 pinnedIcons = await index.pinnedSessions()
             }
             .onChange(of: runtime.sessions.map(\.id)) { _, _ in

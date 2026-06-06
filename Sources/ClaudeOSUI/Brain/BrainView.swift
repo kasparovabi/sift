@@ -74,6 +74,7 @@ public struct BrainView: View {
     @ViewBuilder private var detailPane: some View {
         if let atom = vm.selectedAtom() {
             AtomDetail(atom: atom, vm: vm)
+                .id(atom.id)
         } else {
             ContentUnavailableView(
                 "Bir atom seç",
