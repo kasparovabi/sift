@@ -9,6 +9,7 @@ let package = Package(
         .library(name: "ClaudeOSBrain", targets: ["ClaudeOSBrain"]),
         .executable(name: "claudeos", targets: ["ClaudeOSApp"]),
         .executable(name: "claudeos-spike", targets: ["ClaudeOSSpike"]),
+        .executable(name: "claudeos-brain-mcp", targets: ["ClaudeOSBrainMCP"]),
     ],
     dependencies: [
         .package(url: "https://github.com/migueldeicaza/SwiftTerm.git", from: "1.13.0"),
@@ -31,10 +32,15 @@ let package = Package(
                 .product(name: "GRDB", package: "GRDB.swift"),
             ]
         ),
+        .executableTarget(
+            name: "ClaudeOSBrainMCP",
+            dependencies: ["ClaudeOSBrain"]
+        ),
         .target(
             name: "ClaudeOSRuntime",
             dependencies: [
                 "ClaudeOSCore",
+                "ClaudeOSBrain",
                 .product(name: "SwiftTerm", package: "SwiftTerm"),
             ]
         ),
