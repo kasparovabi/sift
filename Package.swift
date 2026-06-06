@@ -47,7 +47,7 @@ let package = Package(
         .target(
             name: "ClaudeOSUI",
             dependencies: [
-                "ClaudeOSCore", "ClaudeOSIndex", "ClaudeOSRuntime",
+                "ClaudeOSCore", "ClaudeOSIndex", "ClaudeOSRuntime", "ClaudeOSBrain",
                 .product(name: "KeyboardShortcuts", package: "KeyboardShortcuts"),
             ]
         ),
@@ -66,5 +66,6 @@ let package = Package(
         .testTarget(name: "ClaudeOSIndexTests", dependencies: ["ClaudeOSIndex", "ClaudeOSCore"]),
         .testTarget(name: "ClaudeOSBrainTests", dependencies: ["ClaudeOSBrain"]),
         .testTarget(name: "ClaudeOSRuntimeTests", dependencies: ["ClaudeOSRuntime", "ClaudeOSBrain"]),
+        .testTarget(name: "ClaudeOSUITests", dependencies: ["ClaudeOSUI", "ClaudeOSBrain"]),
     ]
 )
