@@ -65,6 +65,11 @@ public final class BrainService: @unchecked Sendable {
         return "atoms=\(atoms)"
     }
 
+    @discardableResult
+    public func forget() throws -> Int {
+        try Forgetter(store: store).sweep()
+    }
+
     public func ingestSession(transcript: String, proj: String?, src: String,
                               extractor: Extractor) throws {
         // Idempotent: skip a session already ingested. Prevents unbounded duplicates

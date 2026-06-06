@@ -284,6 +284,18 @@ public final class BrainStore: @unchecked Sendable {
         try dbQueue.read { db in try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM entity") ?? 0 }
     }
 
+    /// Delete low-value atoms; returns count removed.
+    @discardableResult
+    public func forgetLowValue(now: Double, maxImportance: Int, minAgeSeconds: Double, requireZeroRetrievals: Bool) throws -> Int {
+        try dbQueue.write { db in
+            let cutoff = now - minAgeSeconds
+            let retrievalClause = requireZeroRetrievals ? "AND retrievals = 0" : ""
+            try db.execute(sql: "DELETE FROM atom WHERE imp <= ? AND createdAt <= ? \(retrievalClause)",
+                           arguments: [maxImportance, cutoff])
+            return db.changesCount
+        }
+    }
+
     // MARK: - Full-text search
 
     public func searchFTS(_ query: String, limit: Int) throws -> [Atom] {
