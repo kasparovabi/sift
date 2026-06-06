@@ -121,4 +121,73 @@ public final class BrainStore {
             }
         }
     }
+
+    // MARK: - Entities
+
+    /// Find an entity by exact name (or alias), else create it. Returns its id.
+    public func resolveEntity(name: String, kind: String) throws -> String {
+        try dbQueue.write { db in
+            if let existing = try Entity.filter(sql: "n = ?", arguments: [name]).fetchOne(db) {
+                return existing.id
+            }
+            if let aliasId = try String.fetchOne(db, sql: "SELECT entityId FROM entity_alias WHERE alias = ?", arguments: [name]) {
+                return aliasId
+            }
+            let id = try nextId(db)
+            try Entity(id: id, n: name, k: kind).insert(db)
+            return id
+        }
+    }
+
+    public func linkAtom(_ atomId: String, toEntities entityIds: [String]) throws {
+        try dbQueue.write { db in
+            for eid in entityIds {
+                try db.execute(sql: "INSERT OR IGNORE INTO atom_entity(atomId, entityId) VALUES(?, ?)",
+                               arguments: [atomId, eid])
+            }
+        }
+    }
+
+    public func entityIds(forAtom atomId: String) throws -> [String] {
+        try dbQueue.read { db in
+            try String.fetchAll(db, sql: "SELECT entityId FROM atom_entity WHERE atomId = ? ORDER BY entityId",
+                                arguments: [atomId])
+        }
+    }
+
+    public func atomIds(forEntity entityId: String) throws -> [String] {
+        try dbQueue.read { db in
+            try String.fetchAll(db, sql: "SELECT atomId FROM atom_entity WHERE entityId = ?", arguments: [entityId])
+        }
+    }
+
+    // MARK: - Relations
+
+    @discardableResult
+    public func insertRelation(subjectId: String, predicate: String, objectId: String, src: String,
+                               at: Double = Date().timeIntervalSince1970) throws -> String {
+        try dbQueue.write { db in
+            let id = try nextId(db)
+            try Relation(id: id, subjectId: subjectId, predicate: predicate, objectId: objectId,
+                         validAt: at, invalidAt: nil, src: src).insert(db)
+            return id
+        }
+    }
+
+    /// 1-hop neighbor entity ids (valid relations only), in either direction.
+    public func neighbors(of entityId: String) throws -> [String] {
+        try dbQueue.read { db in
+            let out = try String.fetchAll(db, sql: "SELECT objectId FROM relation WHERE subjectId = ? AND invalidAt IS NULL", arguments: [entityId])
+            let inc = try String.fetchAll(db, sql: "SELECT subjectId FROM relation WHERE objectId = ? AND invalidAt IS NULL", arguments: [entityId])
+            return Array(Set(out + inc))
+        }
+    }
+
+    /// Mark relations matching (subject, predicate) as superseded.
+    public func supersedeRelations(subjectId: String, predicate: String, at: Double = Date().timeIntervalSince1970) throws {
+        try dbQueue.write { db in
+            try db.execute(sql: "UPDATE relation SET invalidAt = ? WHERE subjectId = ? AND predicate = ? AND invalidAt IS NULL",
+                           arguments: [at, subjectId, predicate])
+        }
+    }
 }
