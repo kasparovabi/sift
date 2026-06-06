@@ -159,7 +159,9 @@ public final class DesktopWindowManager {
     public func snap(_ id: UUID, _ edge: SnapEdge) {
         guard let index = windows.firstIndex(where: { $0.id == id }), canvasSize != .zero else { return }
         let area = workArea
-        windows[index].restoreFrame = nil
+        if windows[index].restoreFrame == nil {
+            windows[index].restoreFrame = CGRect(origin: windows[index].origin, size: windows[index].size)
+        }
         switch edge {
         case .left:
             windows[index].origin = CGPoint(x: 0, y: area.top)
@@ -190,7 +192,9 @@ public final class DesktopWindowManager {
             windows[windowIndex].origin = CGPoint(x: gap + CGFloat(col) * (w + gap),
                                                   y: area.top + gap + CGFloat(row) * (h + gap))
             windows[windowIndex].size = CGSize(width: w, height: h)
-            windows[windowIndex].restoreFrame = nil
+            if windows[windowIndex].restoreFrame == nil {
+                windows[windowIndex].restoreFrame = CGRect(origin: windows[windowIndex].origin, size: windows[windowIndex].size)
+            }
         }
     }
 

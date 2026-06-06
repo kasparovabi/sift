@@ -9,11 +9,11 @@ final class BrainStoreFTSTests: XCTestCase {
         return try BrainStore(path: url.path)
     }
 
-    func testPrefixSearch() throws {
+    func testPrefixSearch() async throws {
         let store = try makeStore()
         _ = try store.insertAtom(t: .fact, s: "GRDB FTS5 parser configuration", proj: "p", src: "s#1", imp: 5)
         _ = try store.insertAtom(t: .fact, s: "unrelated note about windows", proj: "p", src: "s#2", imp: 5)
-        let hits = try store.searchFTS("pars", limit: 10)
+        let hits = try await store.searchFTS("pars", limit: 10)
         XCTAssertEqual(hits.count, 1)
         XCTAssertTrue(hits.first?.s.contains("parser") ?? false)
     }

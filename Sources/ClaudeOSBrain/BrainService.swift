@@ -40,7 +40,7 @@ public final class BrainService: @unchecked Sendable {
         let qv = (try? embed(query)) ?? []
         let atoms: [Atom]
         if qv.isEmpty {
-            atoms = try store.searchFTS(query, limit: k)            // degraded path
+            atoms = try store.searchFTSSync(query, limit: k)        // degraded path (sync; runs in the MCP process)
         } else {
             atoms = try recall.recall(queryVector: qv, proj: proj, k: k)
         }
@@ -66,8 +66,8 @@ public final class BrainService: @unchecked Sendable {
     }
 
     @discardableResult
-    public func forget() throws -> Int {
-        try Forgetter(store: store).sweep()
+    public func forget() async throws -> Int {
+        try await Forgetter(store: store).sweep()
     }
 
     public func ingestSession(transcript: String, proj: String?, src: String,

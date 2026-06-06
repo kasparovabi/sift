@@ -248,30 +248,30 @@ public final class BrainStore: @unchecked Sendable {
 
     // MARK: - UI queries / mutations
 
-    public func recentAtoms(limit: Int) throws -> [Atom] {
-        try dbQueue.read { db in
+    public func recentAtoms(limit: Int) async throws -> [Atom] {
+        try await dbQueue.read { db in
             try Atom.fetchAll(db, sql: "SELECT * FROM atom WHERE invalidAt IS NULL ORDER BY createdAt DESC LIMIT ?", arguments: [limit])
         }
     }
 
-    public func allEntities(limit: Int) throws -> [Entity] {
-        try dbQueue.read { db in
+    public func allEntities(limit: Int) async throws -> [Entity] {
+        try await dbQueue.read { db in
             try Entity.fetchAll(db, sql: "SELECT * FROM entity ORDER BY n LIMIT ?", arguments: [limit])
         }
     }
 
-    public func deleteAtom(id: String) throws {
-        try dbQueue.write { db in _ = try Atom.deleteOne(db, key: id) }
+    public func deleteAtom(id: String) async throws {
+        try await dbQueue.write { db in _ = try Atom.deleteOne(db, key: id) }
     }
 
-    public func setImportance(id: String, imp: Int) throws {
-        try dbQueue.write { db in
+    public func setImportance(id: String, imp: Int) async throws {
+        try await dbQueue.write { db in
             try db.execute(sql: "UPDATE atom SET imp = ? WHERE id = ?", arguments: [imp, id])
         }
     }
 
-    public func invalidate(id: String, at: Double = Date().timeIntervalSince1970) throws {
-        try dbQueue.write { db in
+    public func invalidate(id: String, at: Double = Date().timeIntervalSince1970) async throws {
+        try await dbQueue.write { db in
             try db.execute(sql: "UPDATE atom SET invalidAt = ? WHERE id = ?", arguments: [at, id])
         }
     }
@@ -286,8 +286,8 @@ public final class BrainStore: @unchecked Sendable {
 
     /// Delete low-value atoms; returns count removed.
     @discardableResult
-    public func forgetLowValue(now: Double, maxImportance: Int, minAgeSeconds: Double, requireZeroRetrievals: Bool) throws -> Int {
-        try dbQueue.write { db in
+    public func forgetLowValue(now: Double, maxImportance: Int, minAgeSeconds: Double, requireZeroRetrievals: Bool) async throws -> Int {
+        try await dbQueue.write { db in
             let cutoff = now - minAgeSeconds
             let retrievalClause = requireZeroRetrievals ? "AND retrievals = 0" : ""
             try db.execute(sql: "DELETE FROM atom WHERE imp <= ? AND createdAt <= ? \(retrievalClause)",
@@ -298,19 +298,30 @@ public final class BrainStore: @unchecked Sendable {
 
     // MARK: - Full-text search
 
-    public func searchFTS(_ query: String, limit: Int) throws -> [Atom] {
-        try dbQueue.read { db in
-            let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty, let pattern = FTS5Pattern(matchingAllPrefixesIn: trimmed) else {
-                return []
-            }
-            return try Atom.fetchAll(db, sql: """
-                SELECT atom.* FROM atom
-                JOIN atom_ft ON atom_ft.rowid = atom.rowid
-                WHERE atom_ft MATCH ? AND atom.invalidAt IS NULL
-                ORDER BY bm25(atom_ft)
-                LIMIT ?
-                """, arguments: [pattern, limit])
+    /// UI-facing search: dispatches the read off the calling actor (GRDB's async
+    /// overload) so the Brain window never blocks the main run loop on the WAL.
+    public func searchFTS(_ query: String, limit: Int) async throws -> [Atom] {
+        try await dbQueue.read { db in try Self.ftsQuery(db, query, limit: limit) }
+    }
+
+    /// Synchronous sibling for the MCP server's degraded FTS path. It already runs
+    /// off the main thread in the separate claudeos-brain-mcp process, so it keeps
+    /// the simple blocking JSON-RPC loop rather than going async.
+    public func searchFTSSync(_ query: String, limit: Int) throws -> [Atom] {
+        try dbQueue.read { db in try Self.ftsQuery(db, query, limit: limit) }
+    }
+
+    private static func ftsQuery(_ db: Database, _ query: String, limit: Int) throws -> [Atom] {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let pattern = FTS5Pattern(matchingAllPrefixesIn: trimmed) else {
+            return []
         }
+        return try Atom.fetchAll(db, sql: """
+            SELECT atom.* FROM atom
+            JOIN atom_ft ON atom_ft.rowid = atom.rowid
+            WHERE atom_ft MATCH ? AND atom.invalidAt IS NULL
+            ORDER BY bm25(atom_ft)
+            LIMIT ?
+            """, arguments: [pattern, limit])
     }
 }

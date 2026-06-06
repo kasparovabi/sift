@@ -10,18 +10,18 @@ final class BrainViewModelTests: XCTestCase {
         let svc = try BrainService(path: url.path, embed: { _ in [1, 0] })
         return BrainViewModel(service: svc)
     }
-    func testReloadShowsRecent() throws {
+    func testReloadShowsRecent() async throws {
         let vm = try makeVM()
         _ = try vm.service.store.insertAtom(t: .fact, s: "hello", proj: "p", src: "x", imp: 5)
-        vm.reload()
+        await vm.reload()
         XCTAssertEqual(vm.atoms.count, 1)
         XCTAssertEqual(vm.atoms.first?.s, "hello")
     }
-    func testDeleteRemoves() throws {
+    func testDeleteRemoves() async throws {
         let vm = try makeVM()
         let id = try vm.service.store.insertAtom(t: .fact, s: "x", proj: "p", src: "x", imp: 5)
-        vm.reload()
-        vm.delete(id: id)
+        await vm.reload()
+        await vm.delete(id: id)
         XCTAssertTrue(vm.atoms.isEmpty)
     }
 }

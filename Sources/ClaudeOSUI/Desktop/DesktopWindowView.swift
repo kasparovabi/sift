@@ -115,8 +115,14 @@ struct DesktopWindowView<Content: View>: View {
     private var resizeGrip: some View {
         Image(systemName: "arrow.down.right")
             .font(.system(size: 9, weight: .bold))
-            .foregroundStyle(.secondary)
-            .padding(6)
+            .foregroundStyle(isResizing ? .primary : .secondary)
+            .frame(width: 20, height: 20)
+            .background(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(.thinMaterial)
+                    .opacity(isResizing ? 1 : 0.55)
+            )
+            .padding(3)
             .contentShape(Rectangle())
             .gesture(
                 DragGesture(minimumDistance: 2)

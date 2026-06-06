@@ -55,7 +55,7 @@ public struct DesktopView: View {
             .task(id: index.metaStore.metas.mapValues(\.pinned)) {
                 pinnedIcons = await index.pinnedSessions()
             }
-            .onChange(of: runtime.sessions.map(\.id)) { _, _ in
+            .onChange(of: runtime.sessions.map { "\($0.id):\($0.title)" }) { _, _ in
                 manager.syncTerminals(runtime.sessions)
             }
             .onChange(of: runtime.activeSessionId) { _, id in

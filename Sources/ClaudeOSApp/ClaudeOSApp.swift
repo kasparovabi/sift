@@ -66,9 +66,9 @@ struct ClaudeOSApp: App {
         runtime.onSessionFinished = { cwd, sid in ingester.ingestFinished(cwd: cwd, claudeSessionId: sid) }
 
         // Periodic + on-launch Forgetter sweep (drops low-importance, aged, never-retrieved atoms).
-        DispatchQueue.global(qos: .utility).async { _ = try? brain.forget() }
+        Task.detached(priority: .utility) { _ = try? await brain.forget() }
         Timer.scheduledTimer(withTimeInterval: 86_400, repeats: true) { _ in
-            DispatchQueue.global(qos: .utility).async { _ = try? brain.forget() }
+            Task.detached(priority: .utility) { _ = try? await brain.forget() }
         }
 
         // All-session capture: ingest ANY session whose transcript changes while we run
@@ -90,7 +90,7 @@ struct ClaudeOSApp: App {
         _windows = State(initialValue: windows)
         _brainVM = State(initialValue: BrainViewModel(service: brain))
         quickOpen.registerHotkey()
-        quickOpen.openLibrary = {
+        quickOpen.openSessionWindow = {
             NSApp.activate(ignoringOtherApps: true)
             windows.openFinder()
         }

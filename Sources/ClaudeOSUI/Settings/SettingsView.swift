@@ -33,7 +33,7 @@ public struct SettingsView: View {
                     in: 9...28, step: 1) {
                 Text("Terminal yazı boyutu: \(Int(runtime.terminalFontSize)) pt")
             }
-            Picker("Duvar kağıdı", selection: Binding(get: { windows.wallpaper },
+            Picker("Duvar kağıdı", selection: Binding(get: { min(max(0, windows.wallpaper), DesktopWallpaper.presets.count - 1) },
                                                       set: { windows.setWallpaper($0) })) {
                 ForEach(Array(DesktopWallpaper.presets.enumerated()), id: \.offset) { index, preset in
                     Text(preset.name).tag(index)

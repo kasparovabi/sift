@@ -15,13 +15,13 @@ public struct BrainView: View {
             Divider()
             HSplitView {
                 listPane
-                    .frame(minWidth: 300, idealWidth: 360, maxHeight: .infinity)
+                    .frame(minWidth: 200, idealWidth: 360, maxHeight: .infinity)
                 detailPane
-                    .frame(minWidth: 240, maxHeight: .infinity)
+                    .frame(minWidth: 120, maxHeight: .infinity)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .onAppear { vm.reload() }
+        .onAppear { Task { await vm.reload() } }
     }
 
     // MARK: - List pane
@@ -43,11 +43,11 @@ public struct BrainView: View {
                 .font(.caption)
             TextField("Ara…", text: $bvm.query)
                 .textFieldStyle(.plain)
-                .onSubmit { vm.runSearch() }
+                .onSubmit { Task { await vm.runSearch() } }
             if !vm.query.isEmpty {
                 Button {
                     vm.query = ""
-                    vm.reload()
+                    Task { await vm.reload() }
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundStyle(.secondary)
@@ -98,9 +98,9 @@ public struct BrainView: View {
                 .foregroundStyle(.secondary)
             Spacer()
             Button {
-                let n = vm.forget()
-                forgottenCount = n
                 Task {
+                    let n = await vm.forget()
+                    forgottenCount = n
                     try? await Task.sleep(nanoseconds: 3_000_000_000)
                     forgottenCount = nil
                 }
@@ -210,7 +210,7 @@ private struct AtomDetail: View {
                     LabeledContent("Önem") {
                         Stepper("\(importance)", value: $importance, in: 1...10, step: 1)
                             .onChange(of: importance) { _, newVal in
-                                vm.setImportance(id: atom.id, imp: newVal)
+                                Task { await vm.setImportance(id: atom.id, imp: newVal) }
                             }
                     }
                     if let proj = atom.proj, !proj.isEmpty {
@@ -234,14 +234,14 @@ private struct AtomDetail: View {
 
                 HStack(spacing: 10) {
                     Button(role: .destructive) {
-                        vm.delete(id: atom.id)
+                        Task { await vm.delete(id: atom.id) }
                     } label: {
                         Label("Sil", systemImage: "trash")
                     }
                     .buttonStyle(.bordered)
 
                     Button {
-                        vm.invalidate(id: atom.id)
+                        Task { await vm.invalidate(id: atom.id) }
                     } label: {
                         Label("Geçersiz kıl", systemImage: "xmark.seal")
                     }

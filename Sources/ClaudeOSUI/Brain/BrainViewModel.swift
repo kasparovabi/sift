@@ -13,38 +13,48 @@ public final class BrainViewModel {
 
     public init(service: BrainService) { self.service = service }
 
-    public func reload() {
-        atoms = (try? service.store.recentAtoms(limit: 200)) ?? []
-        entities = (try? service.store.allEntities(limit: 200)) ?? []
+    public func reload() async {
+        atoms = (try? await service.store.recentAtoms(limit: 200)) ?? []
+        entities = (try? await service.store.allEntities(limit: 200)) ?? []
+        clampSelection()
     }
 
-    public func runSearch() {
-        guard !query.trimmingCharacters(in: .whitespaces).isEmpty else { reload(); return }
+    public func runSearch() async {
+        guard !query.trimmingCharacters(in: .whitespaces).isEmpty else { await reload(); return }
         // Use FTS directly for the UI list (deterministic, no embed dependency).
-        atoms = (try? service.store.searchFTS(query, limit: 200)) ?? []
+        atoms = (try? await service.store.searchFTS(query, limit: 200)) ?? []
+        clampSelection()
     }
 
-    public func delete(id: String) {
-        try? service.store.deleteAtom(id: id)
-        reload()
+    public func delete(id: String) async {
+        try? await service.store.deleteAtom(id: id)
+        await reload()
     }
 
-    public func setImportance(id: String, imp: Int) {
-        try? service.store.setImportance(id: id, imp: imp)
-        reload()
+    public func setImportance(id: String, imp: Int) async {
+        try? await service.store.setImportance(id: id, imp: imp)
+        await reload()
     }
 
-    public func invalidate(id: String) {
-        try? service.store.invalidate(id: id)
-        reload()
+    public func invalidate(id: String) async {
+        try? await service.store.invalidate(id: id)
+        await reload()
     }
 
     @discardableResult
-    public func forget() -> Int {
-        let n = (try? service.forget()) ?? 0
-        reload()
+    public func forget() async -> Int {
+        let n = (try? await service.forget()) ?? 0
+        await reload()
         return n
     }
 
     public func selectedAtom() -> Atom? { atoms.first { $0.id == selectedAtomId } }
+
+    /// Drop the list selection if it no longer points at a visible atom
+    /// (after delete/forget/reload/search the selected row may be gone).
+    private func clampSelection() {
+        if let id = selectedAtomId, !atoms.contains(where: { $0.id == id }) {
+            selectedAtomId = nil
+        }
+    }
 }

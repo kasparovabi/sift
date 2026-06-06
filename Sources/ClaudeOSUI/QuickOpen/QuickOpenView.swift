@@ -56,7 +56,7 @@ struct QuickOpenView: View {
             focused = true
             Task { await reload() }
         }
-        .onChange(of: query) { _, _ in Task { await reload() } }
+        .onChange(of: query) { _, _ in selection = 0; Task { await reload() } }
         .onKeyPress(.downArrow) { move(1); return .handled }
         .onKeyPress(.upArrow) { move(-1); return .handled }
         .onKeyPress(.escape) { onClose(); return .handled }
@@ -101,7 +101,7 @@ struct QuickOpenView: View {
 
     private func reload() async {
         results = await index.quickSearch(query)
-        selection = 0
+        selection = results.isEmpty ? 0 : min(selection, results.count - 1)
     }
 
     private func resumeSelected() {

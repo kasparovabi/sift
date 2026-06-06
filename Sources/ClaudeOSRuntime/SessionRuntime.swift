@@ -20,8 +20,6 @@ private struct OpenSessionDescriptor: Codable, Sendable {
 public final class SessionRuntime: SessionLauncher, SessionRuntimeStatusProviding {
     public private(set) var sessions: [TerminalSession] = []
     public var activeSessionId: TerminalSession.ID?
-    /// Sessions pulled out of the main workspace into their own windows.
-    public private(set) var detachedSessionIds: Set<TerminalSession.ID> = []
     /// Embedded terminal font size, persisted and applied to every pane.
     public private(set) var terminalFontSize: CGFloat = {
         let stored = UserDefaults.standard.double(forKey: "claudeos.terminalFontSize")
@@ -114,19 +112,8 @@ public final class SessionRuntime: SessionLauncher, SessionRuntimeStatusProvidin
     public func close(_ session: TerminalSession) {
         session.terminate()
         sessions.removeAll { $0.id == session.id }
-        detachedSessionIds.remove(session.id)
         if activeSessionId == session.id { activeSessionId = sessions.last?.id }
         persist()
-    }
-
-    /// Pull a session out of the workspace into its own window.
-    public func detach(_ session: TerminalSession) {
-        detachedSessionIds.insert(session.id)
-    }
-
-    /// Return a detached session to the tiled workspace.
-    public func reattach(_ id: TerminalSession.ID) {
-        detachedSessionIds.remove(id)
     }
 
     public func terminateAll() {
@@ -145,45 +132,6 @@ public final class SessionRuntime: SessionLauncher, SessionRuntimeStatusProvidin
 
     public func adjustFontSize(by delta: CGFloat) {
         setTerminalFontSize(terminalFontSize + delta)
-    }
-
-    // MARK: - Multi-pane navigation / arrangement
-
-    public func focus(at index: Int) {
-        guard sessions.indices.contains(index) else { return }
-        focus(sessions[index])
-    }
-
-    public func focusNext() {
-        guard !sessions.isEmpty else { return }
-        let current = sessions.firstIndex { $0.id == activeSessionId } ?? -1
-        focus(sessions[(current + 1) % sessions.count])
-    }
-
-    public func focusPrevious() {
-        guard !sessions.isEmpty else { return }
-        let current = sessions.firstIndex { $0.id == activeSessionId } ?? 0
-        focus(sessions[(current - 1 + sessions.count) % sessions.count])
-    }
-
-    /// Reorder a pane left/right in the workspace.
-    public func move(_ session: TerminalSession, by delta: Int) {
-        guard let index = sessions.firstIndex(where: { $0.id == session.id }) else { return }
-        let target = max(0, min(sessions.count - 1, index + delta))
-        guard target != index else { return }
-        let item = sessions.remove(at: index)
-        sessions.insert(item, at: target)
-        persist()
-    }
-
-    /// Drag-and-drop reorder: move `sourceId` to where `targetId` currently sits.
-    public func moveSession(_ sourceId: TerminalSession.ID, toIndexOf targetId: TerminalSession.ID) {
-        guard sourceId != targetId,
-              let from = sessions.firstIndex(where: { $0.id == sourceId }) else { return }
-        let item = sessions.remove(at: from)
-        let insertAt = sessions.firstIndex(where: { $0.id == targetId }) ?? sessions.count
-        sessions.insert(item, at: insertAt)
-        persist()
     }
 
     /// Polls each running session's terminal for activity to drive `needsAttention`.

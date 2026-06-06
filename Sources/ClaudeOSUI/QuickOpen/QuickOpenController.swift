@@ -14,8 +14,8 @@ public final class QuickOpenController {
     @ObservationIgnored private let runtime: SessionRuntime
     @ObservationIgnored private var panel: NSPanel?
 
-    /// Set by the UI so the panel can bring the Library window forward after a resume.
-    @ObservationIgnored public var openLibrary: (() -> Void)?
+    /// Set by the UI so the panel can bring the main session window forward after a resume.
+    @ObservationIgnored public var openSessionWindow: (() -> Void)?
 
     public init(index: IndexCoordinator, runtime: SessionRuntime) {
         self.index = index
@@ -61,7 +61,7 @@ public final class QuickOpenController {
             runtime: runtime,
             onResume: { [weak self] in
                 self?.dismiss()
-                self?.openLibrary?()
+                self?.openSessionWindow?()
             },
             onClose: { [weak self] in self?.dismiss() }
         )

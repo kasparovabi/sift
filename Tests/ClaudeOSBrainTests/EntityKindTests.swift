@@ -51,7 +51,7 @@ final class EntityKindTests: XCTestCase {
 
     // MARK: - Consolidator.ingest(result:) test
 
-    func testConsolidatorUsesEntityKindFromResult() throws {
+    func testConsolidatorUsesEntityKindFromResult() async throws {
         let url = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("brain-ek-\(UUID().uuidString).sqlite")
         let store = try BrainStore(path: url.path)
@@ -67,7 +67,7 @@ final class EntityKindTests: XCTestCase {
         try c.ingest(result: result, proj: "p", src: "s#1")
 
         // The entity stored in the DB should have kind "lib", not "concept".
-        let entities = try store.allEntities(limit: 100)
+        let entities = try await store.allEntities(limit: 100)
         let swiftTerm = entities.first(where: { $0.n == "SwiftTerm" })
         XCTAssertNotNil(swiftTerm, "SwiftTerm entity should exist")
         XCTAssertEqual(swiftTerm?.k, "lib")

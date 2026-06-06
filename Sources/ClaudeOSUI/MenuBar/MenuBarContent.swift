@@ -74,6 +74,10 @@ public struct MenuBarContent: View {
                 Button {
                     NSApp.activate(ignoringOtherApps: true)
                     runtime.focus(session)
+                    if let windowId = windows.terminalWindowId(for: session.id) {
+                        windows.restore(windowId)
+                        windows.focus(windowId)
+                    }
                 } label: {
                     rowLabel(title: session.title, subtitle: session.workingDirectory.path,
                              dot: session.needsAttention ? .orange : (session.isRunning ? .green : .secondary))

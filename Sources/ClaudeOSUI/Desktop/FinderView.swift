@@ -14,7 +14,7 @@ struct FinderView: View {
                 .navigationSplitViewColumnWidth(min: 175, ideal: 205)
         } content: {
             SessionListView()
-                .navigationSplitViewColumnWidth(min: 290, ideal: 340)
+                .navigationSplitViewColumnWidth(min: 220, ideal: 340)
         } detail: {
             FinderDetail()
         }

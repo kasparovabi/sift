@@ -11,8 +11,8 @@ public struct Forgetter {
     public func sweep(now: Double = Date().timeIntervalSince1970,
                       maxImportance: Int = 2,
                       minAgeSeconds: Double = 60 * 60 * 24 * 30,
-                      requireZeroRetrievals: Bool = true) throws -> Int {
-        try store.forgetLowValue(now: now, maxImportance: maxImportance,
-                                 minAgeSeconds: minAgeSeconds, requireZeroRetrievals: requireZeroRetrievals)
+                      requireZeroRetrievals: Bool = true) async throws -> Int {
+        try await store.forgetLowValue(now: now, maxImportance: maxImportance,
+                                       minAgeSeconds: minAgeSeconds, requireZeroRetrievals: requireZeroRetrievals)
     }
 }
