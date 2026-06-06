@@ -7,8 +7,23 @@ public final class BrainStore: @unchecked Sendable {
     private let dbQueue: DatabaseQueue
 
     public init(path: String) throws {
-        dbQueue = try DatabaseQueue(path: path)
+        // WAL + busy timeout: the app process and the claudeos-brain-mcp child open
+        // this same file with separate connections, so cross-process readers/writers
+        // must not block-fail each other.
+        var config = Configuration()
+        config.busyMode = .timeout(5)
+        config.prepareDatabase { db in
+            try db.execute(sql: "PRAGMA journal_mode = WAL")
+        }
+        dbQueue = try DatabaseQueue(path: path, configuration: config)
         try migrator.migrate(dbQueue)
+    }
+
+    /// True if any atom was already ingested from this source (session) — for ingest idempotency.
+    public func hasAtoms(src: String) throws -> Bool {
+        try dbQueue.read { db in
+            try Int.fetchOne(db, sql: "SELECT 1 FROM atom WHERE src = ? LIMIT 1", arguments: [src]) != nil
+        }
     }
 
     private var migrator: DatabaseMigrator {

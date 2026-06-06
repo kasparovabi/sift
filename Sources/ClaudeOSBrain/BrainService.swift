@@ -23,6 +23,8 @@ public final class BrainService: @unchecked Sendable {
             let box = EmbedderBox(embedder)
             try self.init(path: path, embed: { try box.embed($0) })
         } else {
+            FileHandle.standardError.write(Data(
+                "ClaudeOS brain: NLContextualEmbedding unavailable; running FTS-only (semantic recall disabled)\n".utf8))
             try self.init(path: path, embed: { _ in [] })
         }
     }
@@ -65,6 +67,10 @@ public final class BrainService: @unchecked Sendable {
 
     public func ingestSession(transcript: String, proj: String?, src: String,
                               extractor: Extractor) throws {
+        // Idempotent: skip a session already ingested. Prevents unbounded duplicates
+        // on re-fire (e.g. resume→exit again), critical in FTS-only mode where cosine
+        // dedup is disabled (empty vectors).
+        if try store.hasAtoms(src: src) { return }
         let result = try extractor.extract(transcript: transcript, proj: proj)
         try consolidator.ingest(result: result, proj: proj, src: src)
     }

@@ -91,7 +91,9 @@ public final class SessionRuntime: SessionLauncher, SessionRuntimeStatusProvidin
         case .fresh: mode = .fresh(sessionId: UUID().uuidString.lowercased())
         }
         var brainArgs: [String] = []
-        if let brain { brainArgs = brain.extraArgs(proj: request.projectId) }
+        // Key the digest on cwd: atoms are ingested with proj=cwd, and projectId is
+        // usually empty/encoded, so cwd is the only key that matches on both sides.
+        if let brain { brainArgs = brain.extraArgs(proj: request.cwd) }
         let spec = ClaudeLaunchSpec(mode: mode, workingDirectory: URL(fileURLWithPath: request.cwd), extraArgs: brainArgs)
         let session = makeSession(spec: spec, title: request.title ?? "claude")
         sessions.append(session)
