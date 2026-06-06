@@ -246,6 +246,44 @@ public final class BrainStore: @unchecked Sendable {
         }
     }
 
+    // MARK: - UI queries / mutations
+
+    public func recentAtoms(limit: Int) throws -> [Atom] {
+        try dbQueue.read { db in
+            try Atom.fetchAll(db, sql: "SELECT * FROM atom WHERE invalidAt IS NULL ORDER BY createdAt DESC LIMIT ?", arguments: [limit])
+        }
+    }
+
+    public func allEntities(limit: Int) throws -> [Entity] {
+        try dbQueue.read { db in
+            try Entity.fetchAll(db, sql: "SELECT * FROM entity ORDER BY n LIMIT ?", arguments: [limit])
+        }
+    }
+
+    public func deleteAtom(id: String) throws {
+        try dbQueue.write { db in _ = try Atom.deleteOne(db, key: id) }
+    }
+
+    public func setImportance(id: String, imp: Int) throws {
+        try dbQueue.write { db in
+            try db.execute(sql: "UPDATE atom SET imp = ? WHERE id = ?", arguments: [imp, id])
+        }
+    }
+
+    public func invalidate(id: String, at: Double = Date().timeIntervalSince1970) throws {
+        try dbQueue.write { db in
+            try db.execute(sql: "UPDATE atom SET invalidAt = ? WHERE id = ?", arguments: [at, id])
+        }
+    }
+
+    public func atomCount() throws -> Int {
+        try dbQueue.read { db in try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM atom WHERE invalidAt IS NULL") ?? 0 }
+    }
+
+    public func entityCount() throws -> Int {
+        try dbQueue.read { db in try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM entity") ?? 0 }
+    }
+
     // MARK: - Full-text search
 
     public func searchFTS(_ query: String, limit: Int) throws -> [Atom] {
