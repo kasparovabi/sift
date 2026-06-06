@@ -190,4 +190,22 @@ public final class BrainStore {
                            arguments: [at, subjectId, predicate])
         }
     }
+
+    // MARK: - Full-text search
+
+    public func searchFTS(_ query: String, limit: Int) throws -> [Atom] {
+        try dbQueue.read { db in
+            let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty, let pattern = FTS5Pattern(matchingAllPrefixesIn: trimmed) else {
+                return []
+            }
+            return try Atom.fetchAll(db, sql: """
+                SELECT atom.* FROM atom
+                JOIN atom_ft ON atom_ft.rowid = atom.rowid
+                WHERE atom_ft MATCH ? AND atom.invalidAt IS NULL
+                ORDER BY bm25(atom_ft)
+                LIMIT ?
+                """, arguments: [pattern, limit])
+        }
+    }
 }
