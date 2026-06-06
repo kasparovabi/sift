@@ -51,6 +51,7 @@ public struct DesktopView: View {
                 monitor.start()
                 runtime.requestNotificationAuthorization()
                 if manager.windows.isEmpty { manager.openFinder() }
+                if ProcessInfo.processInfo.environment["CLAUDEOS_OPEN_BRAIN"] == "1" { manager.openBrain() }
             }
             .task(id: index.metaStore.metas.count) {
                 pinnedIcons = await index.pinnedSessions()
