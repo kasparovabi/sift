@@ -2,7 +2,10 @@ import Foundation
 
 /// Debounces "transcript changed" signals and runs one ingest per stabilized path.
 /// Time is injectable for tests; in production a periodic timer calls `tick(now:)`.
-public final class BrainIngestQueue {
+///
+/// @unchecked Sendable: all access (touch/tick) happens on the main thread — the
+/// IndexCoordinator change callback and the app's tick timer both run on main.
+public final class BrainIngestQueue: @unchecked Sendable {
     private let debounce: Double
     private let ingest: (String) -> Void
     private var pending: [String: Double] = [:]

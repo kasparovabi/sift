@@ -76,6 +76,11 @@ public final class IndexCoordinator {
     @ObservationIgnored private var watcher: FileWatcher?
     @ObservationIgnored private var watchTask: Task<Void, Never>?
 
+    /// Called after an INCREMENTAL update with the file paths of changed sessions
+    /// (for brain auto-ingest of any session, not just OS-launched ones). Not called
+    /// by full rescan — that would flood the brain with the entire history backfill.
+    @ObservationIgnored public var onSessionsChanged: (([String]) -> Void)?
+
     public init(store: IndexStore, projectsRoot: URL? = nil) {
         self.store = store
         self.projectsRoot = projectsRoot
@@ -113,6 +118,9 @@ public final class IndexCoordinator {
         }.value
         if result.upserts.isEmpty && result.presentPaths.count == known.count { return }
         try? await store.apply(result)
+        if !result.upserts.isEmpty {
+            onSessionsChanged?(result.upserts.map(\.filePath))
+        }
         await refreshAfterIndexChange()
     }
 

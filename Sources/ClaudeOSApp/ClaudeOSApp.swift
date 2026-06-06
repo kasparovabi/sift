@@ -71,6 +71,18 @@ struct ClaudeOSApp: App {
             DispatchQueue.global(qos: .utility).async { _ = try? brain.forget() }
         }
 
+        // All-session capture: ingest ANY session whose transcript changes while we run
+        // (not just OS-launched), debounced ~60s so a session is ingested after it goes idle.
+        // Idempotency (hasAtoms(src:)) prevents re-ingesting the same session.
+        let brainQueue = BrainIngestQueue(debounce: 60) { path in ingester.ingestPath(path) }
+        index.onSessionsChanged = { paths in
+            let now = Date().timeIntervalSince1970
+            for p in paths where p.hasSuffix(".jsonl") { brainQueue.touch(p, now: now) }
+        }
+        Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { _ in
+            brainQueue.tick(now: Date().timeIntervalSince1970)
+        }
+
         _index = State(initialValue: index)
         _runtime = State(initialValue: runtime)
         _monitor = State(initialValue: monitor)
