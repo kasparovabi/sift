@@ -6,6 +6,10 @@ import ClaudeOSBrain
 public struct BrainView: View {
     @Environment(BrainViewModel.self) private var vm
     @State private var forgottenCount: Int? = nil
+    @State private var mode: BrainMode =
+        ProcessInfo.processInfo.environment["CLAUDEOS_BRAIN_GRAPH"] == "1" ? .graph : .list
+
+    enum BrainMode: String, CaseIterable { case list = "Liste", graph = "Ağ" }
 
     public init() {}
 
@@ -13,15 +17,40 @@ public struct BrainView: View {
         VStack(spacing: 0) {
             headerBar
             Divider()
-            HSplitView {
-                listPane
-                    .frame(minWidth: 200, idealWidth: 360, maxHeight: .infinity)
-                detailPane
-                    .frame(minWidth: 120, maxHeight: .infinity)
+            switch mode {
+            case .list:
+                HSplitView {
+                    listPane
+                        .frame(minWidth: 200, idealWidth: 360, maxHeight: .infinity)
+                    detailPane
+                        .frame(minWidth: 120, maxHeight: .infinity)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            case .graph:
+                NeuralBrainView(entities: graphNodes, edges: graphEdges, onSelect: focusEntity)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .onAppear { Task { await vm.reload() } }
+    }
+
+    // MARK: - Graph data
+
+    private var graphNodes: [Entity] {
+        let connected = Set(vm.relations.flatMap { [$0.from, $0.to] })
+        let pool = connected.isEmpty ? vm.entities : vm.entities.filter { connected.contains($0.id) }
+        return Array(pool.prefix(140))
+    }
+    private var graphEdges: [(from: String, to: String)] {
+        let ids = Set(graphNodes.map(\.id))
+        return vm.relations
+            .filter { ids.contains($0.from) && ids.contains($0.to) }
+            .map { (from: $0.from, to: $0.to) }
+    }
+    private func focusEntity(_ entity: Entity) {
+        vm.query = entity.n
+        mode = .list
+        Task { await vm.runSearch() }
     }
 
     // MARK: - List pane
@@ -96,6 +125,13 @@ public struct BrainView: View {
             Label("\(vm.entities.count) varlık", systemImage: "person.2")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            Spacer()
+            Picker("", selection: $mode) {
+                ForEach(BrainMode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(width: 120)
             Spacer()
             Button {
                 Task {

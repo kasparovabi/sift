@@ -260,6 +260,14 @@ public final class BrainStore: @unchecked Sendable {
         }
     }
 
+    /// Valid relations as (subjectId, predicate, objectId) tuples — for the graph view.
+    public func allRelations(limit: Int) async throws -> [(from: String, predicate: String, to: String)] {
+        try await dbQueue.read { db in
+            try Row.fetchAll(db, sql: "SELECT subjectId, predicate, objectId FROM relation WHERE invalidAt IS NULL LIMIT ?", arguments: [limit])
+                .map { (from: $0["subjectId"] as String, predicate: $0["predicate"] as String, to: $0["objectId"] as String) }
+        }
+    }
+
     public func deleteAtom(id: String) async throws {
         try await dbQueue.write { db in _ = try Atom.deleteOne(db, key: id) }
     }

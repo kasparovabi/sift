@@ -8,6 +8,8 @@ public final class BrainViewModel {
     public let service: BrainService
     public var atoms: [Atom] = []
     public var entities: [Entity] = []
+    /// Relations as entity-id pairs, for the neural-network graph view.
+    public var relations: [(from: String, predicate: String, to: String)] = []
     public var query: String = ""
     public var selectedAtomId: String?
 
@@ -15,7 +17,8 @@ public final class BrainViewModel {
 
     public func reload() async {
         atoms = (try? await service.store.recentAtoms(limit: 200)) ?? []
-        entities = (try? await service.store.allEntities(limit: 200)) ?? []
+        entities = (try? await service.store.allEntities(limit: 300)) ?? []
+        relations = (try? await service.store.allRelations(limit: 800)) ?? []
         clampSelection()
     }
 
