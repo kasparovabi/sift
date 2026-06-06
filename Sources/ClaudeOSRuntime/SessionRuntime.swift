@@ -2,6 +2,7 @@ import Foundation
 import Observation
 import UserNotifications
 import ClaudeOSCore
+import ClaudeOSBrain
 
 /// A persisted descriptor so open sessions survive an app restart (reattached via
 /// `claude --resume <id>`).
@@ -31,6 +32,9 @@ public final class SessionRuntime: SessionLauncher, SessionRuntimeStatusProvidin
     @ObservationIgnored private let binary: URL
     @ObservationIgnored private let stateURL: URL
     @ObservationIgnored private var attentionTask: Task<Void, Never>?
+
+    /// Optional brain hook; when set, appends MCP-config + digest args to every launch.
+    public var brain: BrainLaunchHook?
 
     public init() {
         self.environment = EnvironmentResolver.environmentStrings()
@@ -82,7 +86,9 @@ public final class SessionRuntime: SessionLauncher, SessionRuntimeStatusProvidin
         case .resume(let id): mode = .resume(sessionId: id)
         case .fresh: mode = .fresh(sessionId: UUID().uuidString.lowercased())
         }
-        let spec = ClaudeLaunchSpec(mode: mode, workingDirectory: URL(fileURLWithPath: request.cwd))
+        var brainArgs: [String] = []
+        if let brain { brainArgs = brain.extraArgs(proj: request.projectId) }
+        let spec = ClaudeLaunchSpec(mode: mode, workingDirectory: URL(fileURLWithPath: request.cwd), extraArgs: brainArgs)
         let session = makeSession(spec: spec, title: request.title ?? "claude")
         sessions.append(session)
         session.start()

@@ -65,5 +65,6 @@ let package = Package(
         .testTarget(name: "ClaudeOSCoreTests", dependencies: ["ClaudeOSCore"]),
         .testTarget(name: "ClaudeOSIndexTests", dependencies: ["ClaudeOSIndex", "ClaudeOSCore"]),
         .testTarget(name: "ClaudeOSBrainTests", dependencies: ["ClaudeOSBrain"]),
+        .testTarget(name: "ClaudeOSRuntimeTests", dependencies: ["ClaudeOSRuntime", "ClaudeOSBrain"]),
     ]
 )
