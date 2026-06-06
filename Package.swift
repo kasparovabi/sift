@@ -6,6 +6,7 @@ let package = Package(
     platforms: [.macOS(.v14)],
     products: [
         .library(name: "ClaudeOSCore", targets: ["ClaudeOSCore"]),
+        .library(name: "ClaudeOSBrain", targets: ["ClaudeOSBrain"]),
         .executable(name: "claudeos", targets: ["ClaudeOSApp"]),
         .executable(name: "claudeos-spike", targets: ["ClaudeOSSpike"]),
     ],
@@ -18,6 +19,13 @@ let package = Package(
         .target(name: "ClaudeOSCore"),
         .target(
             name: "ClaudeOSIndex",
+            dependencies: [
+                "ClaudeOSCore",
+                .product(name: "GRDB", package: "GRDB.swift"),
+            ]
+        ),
+        .target(
+            name: "ClaudeOSBrain",
             dependencies: [
                 "ClaudeOSCore",
                 .product(name: "GRDB", package: "GRDB.swift"),
@@ -50,5 +58,6 @@ let package = Package(
         ),
         .testTarget(name: "ClaudeOSCoreTests", dependencies: ["ClaudeOSCore"]),
         .testTarget(name: "ClaudeOSIndexTests", dependencies: ["ClaudeOSIndex", "ClaudeOSCore"]),
+        .testTarget(name: "ClaudeOSBrainTests", dependencies: ["ClaudeOSBrain"]),
     ]
 )
