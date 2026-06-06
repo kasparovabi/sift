@@ -191,6 +191,44 @@ public final class BrainStore {
         }
     }
 
+    // MARK: - Vectors
+
+    public func setVector(atomId: String, _ vector: [Float]) throws {
+        try dbQueue.write { db in
+            try db.execute(sql: """
+                INSERT INTO atom_vec(atomId, dim, vec) VALUES(?, ?, ?)
+                ON CONFLICT(atomId) DO UPDATE SET dim = excluded.dim, vec = excluded.vec
+                """, arguments: [atomId, vector.count, vector.dataLE])
+        }
+    }
+
+    public func vector(atomId: String) throws -> [Float]? {
+        try dbQueue.read { db in
+            guard let data = try Data.fetchOne(db, sql: "SELECT vec FROM atom_vec WHERE atomId = ?",
+                                              arguments: [atomId]) else {
+                return nil
+            }
+            return [Float](dataLE: data)
+        }
+    }
+
+    public func vectors(forAtomIds ids: [String]) throws -> [String: [Float]] {
+        guard !ids.isEmpty else { return [:] }
+        return try dbQueue.read { db in
+            let placeholders = ids.map { _ in "?" }.joined(separator: ",")
+            let rows = try Row.fetchAll(db,
+                sql: "SELECT atomId, vec FROM atom_vec WHERE atomId IN (\(placeholders))",
+                arguments: StatementArguments(ids))
+            var result: [String: [Float]] = [:]
+            for row in rows {
+                let atomId: String = row["atomId"]
+                let data: Data = row["vec"]
+                result[atomId] = [Float](dataLE: data)
+            }
+            return result
+        }
+    }
+
     // MARK: - Full-text search
 
     public func searchFTS(_ query: String, limit: Int) throws -> [Atom] {
