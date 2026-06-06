@@ -45,6 +45,9 @@ struct ClaudeOSApp: App {
                 dbPath: brainDBPath,
                 digestForProject: { proj in (try? brain.projectDigest(proj: proj, limit: 12)) ?? "" }
             )
+            // Auto-extract knowledge from finished sessions in the background.
+            let ingester = BrainIngester(service: brain)
+            runtime.onSessionFinished = { cwd, sid in ingester.ingestFinished(cwd: cwd, claudeSessionId: sid) }
         }
 
         _index = State(initialValue: index)

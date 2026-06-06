@@ -36,6 +36,10 @@ public final class SessionRuntime: SessionLauncher, SessionRuntimeStatusProvidin
     /// Optional brain hook; when set, appends MCP-config + digest args to every launch.
     public var brain: BrainLaunchHook?
 
+    /// Optional callback fired when a session with a claude id terminates, so the
+    /// brain can extract knowledge from the finished transcript in the background.
+    public var onSessionFinished: (@MainActor @Sendable (_ cwd: String, _ claudeSessionId: String) -> Void)?
+
     public init() {
         self.environment = EnvironmentResolver.environmentStrings()
         self.binary = ClaudeBinary.resolve()
@@ -227,6 +231,9 @@ public final class SessionRuntime: SessionLauncher, SessionRuntimeStatusProvidin
             self.persist()
             if self.activeSessionId != session.id {
                 self.notifyFinished(session, exitCode: code)
+            }
+            if let sid = session.claudeSessionId {
+                self.onSessionFinished?(session.workingDirectory.path, sid)
             }
         }
         return session

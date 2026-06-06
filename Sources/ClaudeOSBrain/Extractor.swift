@@ -75,8 +75,22 @@ public struct Extractor {
         let relations: [RawRel]
     }
 
+    /// Strip markdown code fences / surrounding prose and return the outermost JSON object.
+    public static func cleanJSON(_ text: String) -> String {
+        var s = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if s.hasPrefix("```") {
+            if let firstNewline = s.firstIndex(of: "\n") { s = String(s[s.index(after: firstNewline)...]) }
+            if let fenceEnd = s.range(of: "```", options: .backwards) { s = String(s[..<fenceEnd.lowerBound]) }
+            s = s.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        if let start = s.firstIndex(of: "{"), let end = s.lastIndex(of: "}"), start < end {
+            return String(s[start...end])
+        }
+        return s
+    }
+
     public static func parse(_ json: String) throws -> ExtractionResult {
-        let data = Data(json.utf8)
+        let data = Data(cleanJSON(json).utf8)
         let raw = try JSONDecoder().decode(RawResult.self, from: data)
         let atoms = raw.atoms.map {
             ExtractedAtom(t: AtomType(rawValue: $0.t) ?? .fact, s: $0.s, imp: $0.imp, entities: $0.entities)
