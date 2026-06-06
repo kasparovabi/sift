@@ -1,0 +1,46 @@
+import XCTest
+import Foundation
+import ClaudeOSBrain
+@testable import ClaudeOSRuntime
+
+final class BrainIngesterPathTests: XCTestCase {
+
+    // firstLineCwd returns the cwd field from a well-formed first line
+    func testFirstLineCwdReturnsField() throws {
+        let f = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("test-\(UUID().uuidString).jsonl")
+        let line = """
+        {"cwd":"/Users/x/proj","type":"system"}
+        """
+        try line.write(to: f, atomically: true, encoding: .utf8)
+        XCTAssertEqual(BrainIngester.firstLineCwd(f.path), "/Users/x/proj")
+    }
+
+    // firstLineCwd returns nil when no cwd field is present
+    func testFirstLineCwdReturnsNilWhenNoCwdField() throws {
+        let f = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("test-\(UUID().uuidString).jsonl")
+        let line = """
+        {"type":"assistant","message":"hello"}
+        """
+        try line.write(to: f, atomically: true, encoding: .utf8)
+        XCTAssertNil(BrainIngester.firstLineCwd(f.path))
+    }
+
+    // firstLineCwd returns nil for a missing file
+    func testFirstLineCwdReturnsNilForMissingFile() {
+        XCTAssertNil(BrainIngester.firstLineCwd("/no/such/file.jsonl"))
+    }
+
+    // firstLineCwd only reads the first line, ignoring subsequent ones
+    func testFirstLineCwdUsesOnlyFirstLine() throws {
+        let f = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("test-\(UUID().uuidString).jsonl")
+        let content = """
+        {"cwd":"/first/line"}
+        {"cwd":"/second/line"}
+        """
+        try content.write(to: f, atomically: true, encoding: .utf8)
+        XCTAssertEqual(BrainIngester.firstLineCwd(f.path), "/first/line")
+    }
+}

@@ -46,6 +46,43 @@ public final class BrainIngester: @unchecked Sendable {
         }
     }
 
+    /// Ingest an arbitrary JSONL transcript by absolute path.
+    /// The session id is derived from the filename (no extension).
+    /// The cwd is read from the first line's "cwd" JSON field; if absent,
+    /// the parent folder name is decoded via PathCodec.
+    public func ingestPath(_ jsonlPath: String) {
+        let service = self.service
+        let claudePath = self.claudePath
+        let env = self.env
+        let cap = self.cap
+        queue.async {
+            let url = URL(fileURLWithPath: jsonlPath)
+            let claudeSessionId = url.deletingPathExtension().lastPathComponent
+            let cwd: String
+            if let detected = Self.firstLineCwd(jsonlPath) {
+                cwd = detected
+            } else {
+                cwd = PathCodec.decode(url.deletingLastPathComponent().lastPathComponent)
+            }
+            guard let text = Self.boundedRead(jsonlPath, cap: cap) else { return }
+            let extractor = Extractor(runner: ProcessRunner(), claudePath: claudePath, env: env)
+            try? service.ingestSession(transcript: text, proj: cwd, src: claudeSessionId, extractor: extractor)
+        }
+    }
+
+    /// Read the first line of a JSONL file, parse it as JSON, and return the "cwd" string field.
+    public static func firstLineCwd(_ path: String) -> String? {
+        guard let data = FileManager.default.contents(atPath: path), !data.isEmpty else { return nil }
+        let firstLine: Data
+        if let newline = data.firstIndex(of: UInt8(ascii: "\n")) {
+            firstLine = data[data.startIndex..<newline]
+        } else {
+            firstLine = data
+        }
+        guard let obj = try? JSONSerialization.jsonObject(with: firstLine) as? [String: Any] else { return nil }
+        return obj["cwd"] as? String
+    }
+
     /// Read a transcript bounded to head+tail so extraction token cost stays capped.
     static func boundedRead(_ path: String, cap: Int) -> String? {
         guard let data = FileManager.default.contents(atPath: path), !data.isEmpty else { return nil }
