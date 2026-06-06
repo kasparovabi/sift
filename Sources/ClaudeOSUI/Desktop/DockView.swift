@@ -12,6 +12,7 @@ struct DockView: View {
         HStack(spacing: 8) {
             dockIcon("macwindow", "Finder") { manager.openFinder() }
             dockIcon("square.grid.2x2", "Genel Bakış") { manager.openDashboard() }
+            dockIcon("brain", "Beyin") { manager.openBrain() }
             dockIcon("plus.circle.fill", "Yeni oturum", tint: .accentColor, action: onNewSession)
 
             if !terminalWindows.isEmpty {

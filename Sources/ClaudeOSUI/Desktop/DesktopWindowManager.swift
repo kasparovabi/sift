@@ -12,6 +12,7 @@ public final class DesktopWindowManager {
         case finder
         case dashboard
         case settings
+        case brain
         case terminal(TerminalSession.ID)
     }
 
@@ -44,6 +45,7 @@ public final class DesktopWindowManager {
     public func openFinder() { openSystem(.finder, "Finder", CGSize(width: 880, height: 560)) }
     public func openDashboard() { openSystem(.dashboard, "Genel Bakış", CGSize(width: 700, height: 540)) }
     public func openSettings() { openSystem(.settings, "Ayarlar", CGSize(width: 520, height: 340)) }
+    public func openBrain() { openSystem(.brain, "Beyin", CGSize(width: 820, height: 560)) }
 
     private func openSystem(_ kind: Kind, _ title: String, _ size: CGSize) {
         if let existing = windows.first(where: { $0.kind == kind }) {

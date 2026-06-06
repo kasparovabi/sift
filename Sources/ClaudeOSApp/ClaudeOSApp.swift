@@ -13,6 +13,7 @@ struct ClaudeOSApp: App {
     @State private var monitor: LiveSessionMonitor
     @State private var quickOpen: QuickOpenController
     @State private var windows: DesktopWindowManager
+    @State private var brainVM: BrainViewModel
 
     init() {
         // Always open the desktop fresh; don't restore a previous "no windows" state.
@@ -33,28 +34,43 @@ struct ClaudeOSApp: App {
         // Brain: shared memory store + MCP hook so every launched session gets the
         // brain_* tools and a project digest injected at start. Same brain.sqlite the
         // claudeos-brain-mcp server opens, so app and MCP server share one store.
+        //
+        // BrainService is guaranteed: try the canonical AppSupport path first; if
+        // that fails (first-launch permissions, sandboxing, etc.) fall back to a
+        // temp-directory path so BrainViewModel is always non-nil and BrainView's
+        // @Environment(BrainViewModel.self) never crashes at runtime.
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("ClaudeOS", isDirectory: true)
         try? FileManager.default.createDirectory(at: appSupport, withIntermediateDirectories: true)
         let brainDBPath = appSupport.appendingPathComponent("brain.sqlite").path
-        if let brain = try? BrainService(path: brainDBPath) {
-            let mcpBinary = (Bundle.main.executableURL?.deletingLastPathComponent()
-                .appendingPathComponent("claudeos-brain-mcp").path) ?? "claudeos-brain-mcp"
-            runtime.brain = BrainLaunchHook(
-                binaryPath: mcpBinary,
-                dbPath: brainDBPath,
-                digestForProject: { proj in (try? brain.projectDigest(proj: proj, limit: 12)) ?? "" }
-            )
-            // Auto-extract knowledge from finished sessions in the background.
-            let ingester = BrainIngester(service: brain)
-            runtime.onSessionFinished = { cwd, sid in ingester.ingestFinished(cwd: cwd, claudeSessionId: sid) }
+        let brain: BrainService
+        if let primary = try? BrainService(path: brainDBPath) {
+            brain = primary
+        } else {
+            // Fallback: temp directory so the app always has a working brain store.
+            let fallbackPath = URL(fileURLWithPath: NSTemporaryDirectory())
+                .appendingPathComponent("claudeos-brain-fallback.sqlite").path
+            // If even the fallback fails, there is nothing we can do.
+            brain = try! BrainService(path: fallbackPath)
         }
+        // Wire MCP hook and ingester using the guaranteed brain.
+        let mcpBinary = (Bundle.main.executableURL?.deletingLastPathComponent()
+            .appendingPathComponent("claudeos-brain-mcp").path) ?? "claudeos-brain-mcp"
+        runtime.brain = BrainLaunchHook(
+            binaryPath: mcpBinary,
+            dbPath: brainDBPath,
+            digestForProject: { proj in (try? brain.projectDigest(proj: proj, limit: 12)) ?? "" }
+        )
+        // Auto-extract knowledge from finished sessions in the background.
+        let ingester = BrainIngester(service: brain)
+        runtime.onSessionFinished = { cwd, sid in ingester.ingestFinished(cwd: cwd, claudeSessionId: sid) }
 
         _index = State(initialValue: index)
         _runtime = State(initialValue: runtime)
         _monitor = State(initialValue: monitor)
         _quickOpen = State(initialValue: quickOpen)
         _windows = State(initialValue: windows)
+        _brainVM = State(initialValue: BrainViewModel(service: brain))
         quickOpen.registerHotkey()
         quickOpen.openLibrary = {
             NSApp.activate(ignoringOtherApps: true)
@@ -70,6 +86,7 @@ struct ClaudeOSApp: App {
                 .environment(monitor)
                 .environment(quickOpen)
                 .environment(windows)
+                .environment(brainVM)
                 .frame(minWidth: 900, minHeight: 600)
         }
         .windowStyle(.hiddenTitleBar)
@@ -80,6 +97,8 @@ struct ClaudeOSApp: App {
                     .keyboardShortcut("f", modifiers: [.command, .shift])
                 Button("Genel Bakış") { windows.openDashboard() }
                     .keyboardShortcut("d", modifiers: [.command, .shift])
+                Button("Beyin") { windows.openBrain() }
+                    .keyboardShortcut("b", modifiers: [.command, .shift])
                 Button("Yeniden tara") { Task { await index.rescan() } }
                     .keyboardShortcut("r", modifiers: [.command, .shift])
                 Button("Komut paleti / Hızlı aç") { quickOpen.toggle() }

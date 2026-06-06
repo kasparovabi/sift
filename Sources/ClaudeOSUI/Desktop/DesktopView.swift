@@ -3,6 +3,7 @@ import AppKit
 import ClaudeOSCore
 import ClaudeOSIndex
 import ClaudeOSRuntime
+import ClaudeOSBrain
 
 /// The Claude OS desktop: a wallpaper, a thin top bar, floating windows (Finder,
 /// Dashboard, Settings, and one per terminal session), and a Dock. Terminal
@@ -12,6 +13,7 @@ public struct DesktopView: View {
     @Environment(SessionRuntime.self) private var runtime
     @Environment(LiveSessionMonitor.self) private var monitor
     @Environment(DesktopWindowManager.self) private var manager
+    @Environment(BrainViewModel.self) private var brainVM
     @State private var pinnedIcons: [SessionSummary] = []
 
     public init() {}
@@ -101,6 +103,7 @@ public struct DesktopView: View {
         Button("Yeni oturum…", systemImage: "plus") { newFolderSession() }
         Button("Finder", systemImage: "macwindow") { manager.openFinder() }
         Button("Genel Bakış", systemImage: "square.grid.2x2") { manager.openDashboard() }
+        Button("Beyin", systemImage: "brain") { manager.openBrain() }
         Button("Pencereleri döşe", systemImage: "rectangle.split.3x3") { manager.tileWindows() }
         Divider()
         Button("Yeniden tara", systemImage: "arrow.clockwise") { Task { await index.rescan() } }
@@ -125,6 +128,9 @@ public struct DesktopView: View {
             DashboardView(onResume: resume, onNewFolder: newFolderSession)
         case .settings:
             SettingsView()
+        case .brain:
+            BrainView()
+                .environment(brainVM)
         case .terminal(let id):
             if let session = runtime.sessions.first(where: { $0.id == id }) {
                 TerminalEmulatorView(session: session)
