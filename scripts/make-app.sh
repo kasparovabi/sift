@@ -16,6 +16,11 @@ fi
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/ClaudeOS"
+# Bundle the brain MCP server alongside the main binary (resolved as a sibling at runtime).
+MCP_BIN="$ROOT/.build/$CONFIG/claudeos-brain-mcp"
+if [ -f "$MCP_BIN" ]; then
+    cp "$MCP_BIN" "$APP/Contents/MacOS/claudeos-brain-mcp"
+fi
 cp "$ROOT/packaging/Info.plist" "$APP/Contents/Info.plist"
 if [ -f "$ROOT/packaging/AppIcon.icns" ]; then
     cp "$ROOT/packaging/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"

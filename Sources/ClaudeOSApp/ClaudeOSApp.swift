@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import ClaudeOSBrain
 import ClaudeOSIndex
 import ClaudeOSRuntime
 import ClaudeOSUI
@@ -28,6 +29,24 @@ struct ClaudeOSApp: App {
         let monitor = LiveSessionMonitor()
         let quickOpen = QuickOpenController(index: index, runtime: runtime)
         let windows = DesktopWindowManager()
+
+        // Brain: shared memory store + MCP hook so every launched session gets the
+        // brain_* tools and a project digest injected at start. Same brain.sqlite the
+        // claudeos-brain-mcp server opens, so app and MCP server share one store.
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("ClaudeOS", isDirectory: true)
+        try? FileManager.default.createDirectory(at: appSupport, withIntermediateDirectories: true)
+        let brainDBPath = appSupport.appendingPathComponent("brain.sqlite").path
+        if let brain = try? BrainService(path: brainDBPath) {
+            let mcpBinary = (Bundle.main.executableURL?.deletingLastPathComponent()
+                .appendingPathComponent("claudeos-brain-mcp").path) ?? "claudeos-brain-mcp"
+            runtime.brain = BrainLaunchHook(
+                binaryPath: mcpBinary,
+                dbPath: brainDBPath,
+                digestForProject: { proj in (try? brain.projectDigest(proj: proj, limit: 12)) ?? "" }
+            )
+        }
+
         _index = State(initialValue: index)
         _runtime = State(initialValue: runtime)
         _monitor = State(initialValue: monitor)
