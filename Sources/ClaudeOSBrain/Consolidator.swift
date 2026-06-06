@@ -59,6 +59,12 @@ public struct Consolidator {
     /// Ingest a full extraction result: atoms (deduped) then relations (bi-temporal supersede).
     public func ingest(result: ExtractionResult, proj: String?, src: String,
                        now: Double = Date().timeIntervalSince1970) throws {
+        // Pre-resolve entities with their real kinds before ingesting atoms.
+        // resolveEntity is idempotent by name, so if the entity already exists it
+        // keeps its current kind; if new, it gets the extracted kind.
+        for (name, kind) in result.entityKinds {
+            _ = try store.resolveEntity(name: name, kind: kind)
+        }
         for atom in result.atoms { try ingest(atom, proj: proj, src: src, now: now) }
         for rel in result.relations {
             let s = try store.resolveEntity(name: rel.s, kind: "concept")

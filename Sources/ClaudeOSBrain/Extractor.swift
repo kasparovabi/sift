@@ -32,6 +32,17 @@ public struct ProcessRunner: CommandRunning {
 public struct ExtractionResult {
     public var atoms: [ExtractedAtom]
     public var relations: [(s: String, p: String, o: String)]
+    /// Maps entity name → kind ("person"/"project"/"file"/"tool"/"lib"/"concept").
+    /// Populated from object-form entity entries in the extracted JSON.
+    /// Plain-string entity entries default to "concept".
+    public var entityKinds: [String: String]
+
+    public init(atoms: [ExtractedAtom], relations: [(s: String, p: String, o: String)],
+                entityKinds: [String: String] = [:]) {
+        self.atoms = atoms
+        self.relations = relations
+        self.entityKinds = entityKinds
+    }
 }
 
 public struct Extractor {
@@ -68,9 +79,32 @@ public struct Extractor {
         return result
     }
 
-    struct RawResult: Codable {
-        struct RawAtom: Codable { let t: String; let s: String; let imp: Int; let entities: [String] }
-        struct RawRel: Codable { let s: String; let p: String; let o: String }
+    /// Accepts either a plain JSON string `"Name"` or an object `{"n":"Name","k":"lib"}`.
+    struct EntityRef: Decodable {
+        let name: String
+        let kind: String
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.singleValueContainer()
+            // Try plain string first.
+            if let plain = try? container.decode(String.self) {
+                name = plain
+                kind = "concept"
+                return
+            }
+            // Fall back to object form.
+            struct Obj: Decodable { let n: String; let k: String? }
+            let obj = try container.decode(Obj.self)
+            name = obj.n
+            kind = obj.k ?? "concept"
+        }
+    }
+
+    struct RawResult: Decodable {
+        struct RawAtom: Decodable {
+            let t: String; let s: String; let imp: Int; let entities: [EntityRef]
+        }
+        struct RawRel: Decodable { let s: String; let p: String; let o: String }
         let atoms: [RawAtom]
         let relations: [RawRel]
     }
@@ -92,10 +126,16 @@ public struct Extractor {
     public static func parse(_ json: String) throws -> ExtractionResult {
         let data = Data(cleanJSON(json).utf8)
         let raw = try JSONDecoder().decode(RawResult.self, from: data)
-        let atoms = raw.atoms.map {
-            ExtractedAtom(t: AtomType(rawValue: $0.t) ?? .fact, s: $0.s, imp: $0.imp, entities: $0.entities)
+
+        var entityKinds: [String: String] = [:]
+        let atoms = raw.atoms.map { rawAtom -> ExtractedAtom in
+            let refs = rawAtom.entities
+            let names = refs.map(\.name)
+            for ref in refs { entityKinds[ref.name] = ref.kind }
+            return ExtractedAtom(t: AtomType(rawValue: rawAtom.t) ?? .fact,
+                                 s: rawAtom.s, imp: rawAtom.imp, entities: names)
         }
         let rels = raw.relations.map { (s: $0.s, p: $0.p, o: $0.o) }
-        return ExtractionResult(atoms: atoms, relations: rels)
+        return ExtractionResult(atoms: atoms, relations: rels, entityKinds: entityKinds)
     }
 }
