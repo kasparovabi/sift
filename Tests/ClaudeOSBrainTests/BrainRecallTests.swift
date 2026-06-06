@@ -31,6 +31,23 @@ final class BrainRecallTests: XCTestCase {
         XCTAssertEqual(results.first?.id, hi)
     }
 
+    /// A candidate whose stored vector has a different dimension than the query is not
+    /// returned as the top match over a correct-dimension atom, and does not crash.
+    /// Without the guard, a dim=1 stored vector [1.0] would score cosine=1.0 against
+    /// query [1.0, 0.0], beating a correct dim=2 vector [0.9, 0.1] (~0.994).
+    func testDimMismatchNotTopMatch() throws {
+        let store = try makeStore()
+        let correct = try store.insertAtom(t: .fact, s: "correct", proj: "p", src: "s#1", imp: 5)
+        let mismatch = try store.insertAtom(t: .fact, s: "mismatch", proj: "p", src: "s#2", imp: 5)
+        // correct atom dim=2 matches query dim=2; cosine ~0.994
+        try store.setVector(atomId: correct, [0.9, 0.1])
+        // mismatch atom dim=1 differs from query dim=2; current cosine(partial)=1.0 which is wrong
+        try store.setVector(atomId: mismatch, [1.0])
+        let recall = BrainRecall(store: store)
+        let results = try recall.recall(queryVector: [1.0, 0.0], proj: "p", k: 2)
+        XCTAssertEqual(results.first?.id, correct, "Dim-mismatch atom must not outscore correct-dim atom")
+    }
+
     func testExcludesInvalidated() throws {
         let store = try makeStore()
         let id = try store.insertAtom(t: .fact, s: "old", proj: "p", src: "s#1", imp: 5)

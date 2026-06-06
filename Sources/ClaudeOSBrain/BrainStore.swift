@@ -1,7 +1,9 @@
 import Foundation
 import GRDB
 
-public final class BrainStore {
+// @unchecked Sendable is safe: the only stored property is DatabaseQueue, which is
+// itself thread-safe (it serializes all access through its write/read queue).
+public final class BrainStore: @unchecked Sendable {
     private let dbQueue: DatabaseQueue
 
     public init(path: String) throws {

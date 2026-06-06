@@ -24,7 +24,10 @@ public struct BrainRecall {
         guard !candidates.isEmpty else { return [] }
         let vectors = try store.vectors(forAtomIds: candidates.map(\.id))
         let scored: [(Atom, Float)] = candidates.map { atom in
-            let relevance = vectors[atom.id].map { cosine(queryVector, $0) } ?? 0
+            let relevance: Float = vectors[atom.id].flatMap { stored in
+                // Treat dimension mismatch as non-comparable (relevance = 0).
+                stored.count == queryVector.count ? cosine(queryVector, stored) : nil
+            } ?? 0
             let age = Float(now - (atom.lastRetrievedAt ?? atom.createdAt))
             let recency = exp(-max(0, age) / decayHalfLifeSeconds)
             let score = wRecency * recency

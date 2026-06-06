@@ -10,7 +10,8 @@ final class ConsolidatorTests: XCTestCase {
     }
 
     // Fake embedder: maps known strings to fixed vectors.
-    func fakeEmbed(_ table: [String: [Float]]) -> (String) throws -> [Float] {
+    // The closure captures only a local [String:[Float]] dictionary, which is Sendable.
+    func fakeEmbed(_ table: [String: [Float]]) -> @Sendable (String) throws -> [Float] {
         { table[$0] ?? [0, 0] }
     }
 

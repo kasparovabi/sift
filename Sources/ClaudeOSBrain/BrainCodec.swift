@@ -16,18 +16,29 @@ public enum BrainCodec {
         if !relations.isEmpty {
             lines.append("rel:")
             for (s, p, o) in relations {
-                lines.append("\(s)>\(p)>\(o)")
+                // Sanitize: replace any ">" in entity/predicate names with a space
+                // so the s>p>o split is unambiguous.
+                let ss = s.replacingOccurrences(of: ">", with: " ")
+                let pp = p.replacingOccurrences(of: ">", with: " ")
+                let oo = o.replacingOccurrences(of: ">", with: " ")
+                lines.append("\(ss)>\(pp)>\(oo)")
             }
         }
         return lines.joined(separator: "\n")
     }
 
-    /// Quote a field if it contains a comma, quote, or newline; double inner quotes.
+    /// Quote a field if it contains a comma or quote; escape newlines as literal \n so
+    /// a claim never spans physical lines. Decode unescapes them on the way back.
     static func field(_ value: String) -> String {
-        if value.contains(",") || value.contains("\"") || value.contains("\n") {
-            return "\"" + value.replacingOccurrences(of: "\"", with: "\"\"") + "\""
+        // Escape newlines first so the resulting string is single-line.
+        let escaped = value
+            .replacingOccurrences(of: "\r\n", with: #"\n"#)
+            .replacingOccurrences(of: "\r", with: #"\n"#)
+            .replacingOccurrences(of: "\n", with: #"\n"#)
+        if escaped.contains(",") || escaped.contains("\"") {
+            return "\"" + escaped.replacingOccurrences(of: "\"", with: "\"\"") + "\""
         }
-        return value
+        return escaped
     }
 
     // MARK: - Decode
@@ -61,7 +72,9 @@ public enum BrainCodec {
             case "atoms":
                 let parts = splitFields(line)
                 guard parts.count >= 4, let t = AtomType(rawValue: parts[1]), let imp = Int(parts[3]) else { continue }
-                atoms.append(DecodedAtom(id: parts[0], t: t, s: parts[2], imp: imp))
+                // Unescape literal \n sequences back to real newlines in the claim field.
+                let claim = parts[2].replacingOccurrences(of: #"\n"#, with: "\n")
+                atoms.append(DecodedAtom(id: parts[0], t: t, s: claim, imp: imp))
             case "rel":
                 let r = line.components(separatedBy: ">")
                 if r.count == 3 { relations.append((r[0], r[1], r[2])) }
@@ -77,7 +90,7 @@ public enum BrainCodec {
         var fields: [String] = []
         var current = ""
         var inQuotes = false
-        var chars = Array(line)
+        let chars = Array(line)
         var i = 0
         while i < chars.count {
             let c = chars[i]
