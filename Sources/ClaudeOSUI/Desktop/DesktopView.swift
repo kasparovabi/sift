@@ -214,15 +214,16 @@ private struct DesktopTopBar: View {
     }
 }
 
-/// Hides the host macOS window's real traffic lights so the desktop is immersive
-/// (each emulated window has its own controls). Quit via ⌘Q / menubar.
+/// Shows the host window's real close/minimize/zoom (the APP's own controls, top-left)
+/// while keeping the title bar transparent so the desktop still reads as immersive.
+/// The app is closed/minimized via these; emulated windows have their own controls.
 private final class ChromeHidingView: NSView {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         guard let window else { return }
-        window.standardWindowButton(.closeButton)?.isHidden = true
-        window.standardWindowButton(.miniaturizeButton)?.isHidden = true
-        window.standardWindowButton(.zoomButton)?.isHidden = true
+        window.standardWindowButton(.closeButton)?.isHidden = false
+        window.standardWindowButton(.miniaturizeButton)?.isHidden = false
+        window.standardWindowButton(.zoomButton)?.isHidden = false
         window.titlebarAppearsTransparent = true
         window.isMovableByWindowBackground = false
     }

@@ -9,14 +9,15 @@ import ClaudeOSRuntime
 /// desktop, not inside this window).
 struct FinderView: View {
     var body: some View {
-        NavigationSplitView {
+        // HSplitView (not NavigationSplitView) so no controls leak into the host
+        // window's toolbar — everything lives inside this emulated window.
+        HSplitView {
             ProjectSidebar()
-                .navigationSplitViewColumnWidth(min: 175, ideal: 205)
-        } content: {
+                .frame(minWidth: 170, idealWidth: 205, maxHeight: .infinity)
             SessionListView()
-                .navigationSplitViewColumnWidth(min: 220, ideal: 340)
-        } detail: {
+                .frame(minWidth: 240, idealWidth: 340, maxHeight: .infinity)
             FinderDetail()
+                .frame(minWidth: 240, maxHeight: .infinity)
         }
     }
 }

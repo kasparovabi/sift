@@ -12,107 +12,136 @@ struct SessionListView: View {
 
     var body: some View {
         @Bindable var index = index
-        List(index.sessions, selection: $index.selectedSessionId) { session in
-            SessionRow(session: session, isLive: isLive(session.sessionId))
-                .contextMenu {
-                    Button(session.pinned ? "Sabitlemeyi kaldır" : "Sabitle",
-                           systemImage: session.pinned ? "pin.slash" : "pin") {
-                        index.togglePin(session.sessionId)
+        VStack(spacing: 0) {
+            header
+            Divider()
+            List(index.sessions, selection: $index.selectedSessionId) { session in
+                SessionRow(session: session, isLive: isLive(session.sessionId))
+                    .contextMenu {
+                        Button(session.pinned ? "Sabitlemeyi kaldır" : "Sabitle",
+                               systemImage: session.pinned ? "pin.slash" : "pin") {
+                            index.togglePin(session.sessionId)
+                        }
+                        Button(session.archived ? "Arşivden çıkar" : "Arşivle",
+                               systemImage: session.archived ? "tray.and.arrow.up" : "archivebox") {
+                            index.toggleArchive(session.sessionId)
+                        }
+                        Button("Düzenle (ad / etiket)…", systemImage: "pencil") { editingSession = session }
+                        Divider()
+                        Button("Resume komutunu kopyala", systemImage: "doc.on.doc") {
+                            copyResumeCommand(session)
+                        }
+                        Button("Oturum id'sini kopyala", systemImage: "number") {
+                            copyToPasteboard(session.sessionId)
+                        }
+                        if let cwd = session.cwd {
+                            Button("Dizini Finder'da aç", systemImage: "folder") { openInFinder(cwd) }
+                        }
+                        Button("Transkript dosyasını göster", systemImage: "doc.text.magnifyingglass") {
+                            revealInFinder(session.filePath)
+                        }
                     }
-                    Button(session.archived ? "Arşivden çıkar" : "Arşivle",
-                           systemImage: session.archived ? "tray.and.arrow.up" : "archivebox") {
-                        index.toggleArchive(session.sessionId)
-                    }
-                    Button("Düzenle (ad / etiket)…", systemImage: "pencil") { editingSession = session }
-                    Divider()
-                    Button("Resume komutunu kopyala", systemImage: "doc.on.doc") {
-                        copyResumeCommand(session)
-                    }
-                    Button("Oturum id'sini kopyala", systemImage: "number") {
-                        copyToPasteboard(session.sessionId)
-                    }
-                    if let cwd = session.cwd {
-                        Button("Dizini Finder'da aç", systemImage: "folder") { openInFinder(cwd) }
-                    }
-                    Button("Transkript dosyasını göster", systemImage: "doc.text.magnifyingglass") {
-                        revealInFinder(session.filePath)
-                    }
+            }
+            .overlay {
+                if index.sessions.isEmpty && !index.isScanning {
+                    ContentUnavailableView.search
                 }
+            }
         }
         .sheet(item: $editingSession) { session in
             SessionEditSheet(session: session).environment(index)
         }
-        .searchable(text: $index.searchText, placement: .toolbar, prompt: "Tüm oturumlarda ara")
         .onChange(of: index.searchText) { _, _ in
             Task { await index.runSearch() }
         }
-        .overlay {
-            if index.sessions.isEmpty && !index.isScanning {
-                ContentUnavailableView.search
+    }
+
+    /// In-window header (title, count, search, filter, new). Kept INSIDE this window
+    /// so it never leaks into the host window's toolbar and jitters when the emulated
+    /// window is dragged.
+    @ViewBuilder private var header: some View {
+        @Bindable var index = index
+        HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(navTitle).font(.headline).lineLimit(1)
+                Text("\(index.sessions.count) oturum").font(.caption2).foregroundStyle(.secondary)
             }
+            Spacer(minLength: 6)
+            HStack(spacing: 4) {
+                Image(systemName: "magnifyingglass").font(.caption).foregroundStyle(.secondary)
+                TextField("Ara…", text: $index.searchText).textFieldStyle(.plain).frame(minWidth: 70, maxWidth: 130)
+            }
+            .padding(.horizontal, 6).padding(.vertical, 4)
+            .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
+            filterMenu
+            newMenu
         }
-        .navigationTitle(navTitle)
-        .navigationSubtitle("\(index.sessions.count) oturum")
-        .toolbar {
-            ToolbarItem {
-                Menu {
-                    Picker("Zaman aralığı", selection: $index.timeRange) {
-                        Text("Tümü").tag(IndexCoordinator.TimeRange.all)
-                        Text("Bugün").tag(IndexCoordinator.TimeRange.today)
-                        Text("Son 7 gün").tag(IndexCoordinator.TimeRange.week)
-                        Text("Son 30 gün").tag(IndexCoordinator.TimeRange.month)
-                    }
-                    if !index.branches.isEmpty {
-                        Picker("Dal", selection: $index.branchFilter) {
-                            Text("Tümü").tag(String?.none)
-                            ForEach(index.branches, id: \.self) { branch in
-                                Text(branch).tag(String?.some(branch))
-                            }
-                        }
-                    }
-                    if !index.entrypoints.isEmpty {
-                        Picker("Giriş noktası", selection: $index.entrypointFilter) {
-                            Text("Tümü").tag(String?.none)
-                            ForEach(index.entrypoints, id: \.self) { entry in
-                                Text(entry).tag(String?.some(entry))
-                            }
-                        }
-                    }
-                    if !index.allTags.isEmpty {
-                        Picker("Etiket", selection: $index.tagFilter) {
-                            Text("Tümü").tag(String?.none)
-                            ForEach(index.allTags, id: \.self) { tag in
-                                Text(tag).tag(String?.some(tag))
-                            }
-                        }
-                    }
-                    Divider()
-                    Toggle("Arşivlenenleri göster", isOn: $index.showArchived)
-                    if index.hasActiveFilters {
-                        Button("Filtreleri temizle", systemImage: "xmark.circle") {
-                            index.clearFilters()
-                        }
-                    }
-                } label: {
-                    Label("Filtrele", systemImage: index.hasActiveFilters
-                          ? "line.3.horizontal.decrease.circle.fill"
-                          : "line.3.horizontal.decrease.circle")
-                }
-                .help("Tarih, dal veya giriş noktasına göre filtrele")
+        .padding(.horizontal, 10)
+        .frame(height: 40)
+        .background(.ultraThinMaterial)
+    }
+
+    @ViewBuilder private var filterMenu: some View {
+        @Bindable var index = index
+        Menu {
+            Picker("Zaman aralığı", selection: $index.timeRange) {
+                Text("Tümü").tag(IndexCoordinator.TimeRange.all)
+                Text("Bugün").tag(IndexCoordinator.TimeRange.today)
+                Text("Son 7 gün").tag(IndexCoordinator.TimeRange.week)
+                Text("Son 30 gün").tag(IndexCoordinator.TimeRange.month)
             }
-            ToolbarItem {
-                Menu {
-                    Button("Seçili projede", systemImage: "plus", action: newSession)
-                    Button("Klasör seç…", systemImage: "folder.badge.plus", action: newInChosenFolder)
-                        .keyboardShortcut("n", modifiers: .command)
-                } label: {
-                    Label("Yeni oturum", systemImage: "plus")
-                } primaryAction: {
-                    newSession()
+            if !index.branches.isEmpty {
+                Picker("Dal", selection: $index.branchFilter) {
+                    Text("Tümü").tag(String?.none)
+                    ForEach(index.branches, id: \.self) { branch in
+                        Text(branch).tag(String?.some(branch))
+                    }
                 }
-                .help("Yeni oturum: seçili projede ya da seçtiğin klasörde (⌘N)")
             }
+            if !index.entrypoints.isEmpty {
+                Picker("Giriş noktası", selection: $index.entrypointFilter) {
+                    Text("Tümü").tag(String?.none)
+                    ForEach(index.entrypoints, id: \.self) { entry in
+                        Text(entry).tag(String?.some(entry))
+                    }
+                }
+            }
+            if !index.allTags.isEmpty {
+                Picker("Etiket", selection: $index.tagFilter) {
+                    Text("Tümü").tag(String?.none)
+                    ForEach(index.allTags, id: \.self) { tag in
+                        Text(tag).tag(String?.some(tag))
+                    }
+                }
+            }
+            Divider()
+            Toggle("Arşivlenenleri göster", isOn: $index.showArchived)
+            if index.hasActiveFilters {
+                Button("Filtreleri temizle", systemImage: "xmark.circle") { index.clearFilters() }
+            }
+        } label: {
+            Image(systemName: index.hasActiveFilters
+                  ? "line.3.horizontal.decrease.circle.fill"
+                  : "line.3.horizontal.decrease.circle")
         }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help("Tarih, dal veya giriş noktasına göre filtrele")
+    }
+
+    @ViewBuilder private var newMenu: some View {
+        Menu {
+            Button("Seçili projede", systemImage: "plus", action: newSession)
+            Button("Klasör seç…", systemImage: "folder.badge.plus", action: newInChosenFolder)
+                .keyboardShortcut("n", modifiers: .command)
+        } label: {
+            Image(systemName: "plus")
+        } primaryAction: {
+            newSession()
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help("Yeni oturum: seçili projede ya da seçtiğin klasörde (⌘N)")
     }
 
     private func isLive(_ sessionId: String) -> Bool {
