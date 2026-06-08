@@ -39,7 +39,10 @@ struct ProjectSidebar: View {
                 }
             }
         }
-        .listStyle(.sidebar)
+        // .inset (opaque), not .sidebar: the sidebar style uses behind-window vibrancy
+        // that re-samples the desktop backdrop and shimmers when the emulated window is
+        // dragged across it.
+        .listStyle(.inset)
         .overlay {
             if index.isScanning {
                 VStack(spacing: 8) {

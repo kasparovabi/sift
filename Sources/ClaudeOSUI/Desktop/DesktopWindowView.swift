@@ -35,6 +35,8 @@ private struct WindowChrome: ViewModifier {
     @State private var isResizing = false
     @State private var hoveringControls = false
 
+    private var moving: Bool { isDragging || isResizing }
+
     private var liveSize: CGSize {
         CGSize(width: max(320, window.size.width + resizeDelta.width),
                height: max(220, window.size.height + resizeDelta.height))
@@ -52,7 +54,11 @@ private struct WindowChrome: ViewModifier {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(width: liveSize.width, height: liveSize.height)
-        .background(.regularMaterial)
+        // While moving/resizing use an OPAQUE background and a light shadow: a
+        // translucent material re-samples the backdrop and a large blurred shadow is
+        // recomputed every frame as the window moves, both of which flicker. Restore
+        // the material + full shadow once the window is at rest.
+        .background(moving ? AnyShapeStyle(Color(red: 0.13, green: 0.14, blue: 0.17)) : AnyShapeStyle(.regularMaterial))
         .clipShape(RoundedRectangle(cornerRadius: 11))
         .overlay(
             RoundedRectangle(cornerRadius: 11)
@@ -60,7 +66,8 @@ private struct WindowChrome: ViewModifier {
                               lineWidth: isActive ? 1.5 : 1)
         )
         .overlay(alignment: .bottomTrailing) { resizeGrip }
-        .shadow(color: .black.opacity(isActive ? 0.45 : 0.3), radius: isActive ? 22 : 12, x: 0, y: 8)
+        .shadow(color: .black.opacity(isActive ? 0.45 : 0.3),
+                radius: moving ? 6 : (isActive ? 22 : 12), x: 0, y: moving ? 3 : 8)
         .offset(x: liveOrigin.x, y: liveOrigin.y)
         .zIndex(window.z + (isDragging || isResizing ? 10_000 : 0))
         .simultaneousGesture(TapGesture().onEnded { manager.focus(window.id) })
