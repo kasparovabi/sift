@@ -35,8 +35,6 @@ private struct WindowChrome: ViewModifier {
     @State private var isResizing = false
     @State private var hoveringControls = false
 
-    private var moving: Bool { isDragging || isResizing }
-
     private var liveSize: CGSize {
         CGSize(width: max(320, window.size.width + resizeDelta.width),
                height: max(220, window.size.height + resizeDelta.height))
@@ -50,15 +48,20 @@ private struct WindowChrome: ViewModifier {
         VStack(spacing: 0) {
             titleBar
             Divider()
-            content
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            ZStack {
+                // Real content stays mounted (state preserved) but is hidden while
+                // dragging — AppKit-backed List/HSplitView don't track a SwiftUI .offset
+                // smoothly and lag/flicker. A pure-SwiftUI placeholder moves perfectly.
+                content
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .opacity(isDragging ? 0 : 1)
+                if isDragging { dragPlaceholder }
+            }
         }
         .frame(width: liveSize.width, height: liveSize.height)
-        // While moving/resizing use an OPAQUE background and a light shadow: a
-        // translucent material re-samples the backdrop and a large blurred shadow is
-        // recomputed every frame as the window moves, both of which flicker. Restore
-        // the material + full shadow once the window is at rest.
-        .background(moving ? AnyShapeStyle(Color(red: 0.13, green: 0.14, blue: 0.17)) : AnyShapeStyle(.regularMaterial))
+        // Solid opaque background: a translucent material re-samples the moving backdrop
+        // every frame and shimmers; opaque composites cleanly.
+        .background(Color(red: 0.13, green: 0.14, blue: 0.17))
         .clipShape(RoundedRectangle(cornerRadius: 11))
         .overlay(
             RoundedRectangle(cornerRadius: 11)
@@ -66,11 +69,32 @@ private struct WindowChrome: ViewModifier {
                               lineWidth: isActive ? 1.5 : 1)
         )
         .overlay(alignment: .bottomTrailing) { resizeGrip }
-        .shadow(color: .black.opacity(isActive ? 0.45 : 0.3),
-                radius: moving ? 6 : (isActive ? 22 : 12), x: 0, y: moving ? 3 : 8)
+        .shadow(color: .black.opacity(isActive ? 0.4 : 0.28), radius: isActive ? 16 : 10, x: 0, y: 6)
         .offset(x: liveOrigin.x, y: liveOrigin.y)
         .zIndex(window.z + (isDragging || isResizing ? 10_000 : 0))
         .simultaneousGesture(TapGesture().onEnded { manager.focus(window.id) })
+    }
+
+    /// Lightweight stand-in shown while dragging (icon + title on the solid window
+    /// background) so only pure SwiftUI moves with the offset.
+    private var dragPlaceholder: some View {
+        VStack(spacing: 10) {
+            Image(systemName: kindIcon)
+                .font(.system(size: 34, weight: .light))
+                .foregroundStyle(.secondary)
+            Text(window.title).font(.headline).foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var kindIcon: String {
+        switch window.kind {
+        case .finder:    return "macwindow"
+        case .dashboard: return "square.grid.2x2"
+        case .settings:  return "gearshape"
+        case .brain:     return "brain"
+        case .terminal:  return "terminal"
+        }
     }
 
     private var titleBar: some View {
