@@ -39,9 +39,17 @@ public struct BrainView: View {
     // MARK: - Graph data
 
     private var graphNodes: [Entity] {
-        let connected = Set(vm.relations.flatMap { [$0.from, $0.to] })
+        // Degree per entity, so we keep the most-connected nodes (Obsidian-style hubs)
+        // when capping — and the cap keeps the O(n²) layout snappy.
+        var degree: [String: Int] = [:]
+        for r in vm.relations where r.from != r.to {
+            degree[r.from, default: 0] += 1
+            degree[r.to, default: 0] += 1
+        }
+        let connected = Set(degree.keys)
         let pool = connected.isEmpty ? vm.entities : vm.entities.filter { connected.contains($0.id) }
-        return Array(pool.prefix(140))
+        let ranked = pool.sorted { (degree[$0.id] ?? 0) > (degree[$1.id] ?? 0) }
+        return Array(ranked.prefix(120))
     }
     private var graphEdges: [(from: String, to: String)] {
         let ids = Set(graphNodes.map(\.id))
