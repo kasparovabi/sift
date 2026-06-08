@@ -144,13 +144,17 @@ public final class IndexStore: Sendable {
             let lastActivity: Date? = row["la"]
             let sampleCwd: String? = row["sampleCwd"]
             let decoded = sampleCwd ?? PathCodec.decode(pid)
+            // Don't stat paths on removable/external volumes: `fileExists` there pops the
+            // macOS "wants to access files on a removable volume" prompt, which blocks
+            // startup just to grey out a row. Assume such projects exist.
+            let exists = decoded.hasPrefix("/Volumes/") ? true : fm.fileExists(atPath: decoded)
             try ProjectRecord(
                 id: pid,
                 decodedPath: decoded,
                 displayName: PathCodec.displayName(forDecodedPath: decoded),
                 sessionCount: count,
                 lastActivity: lastActivity,
-                cwdExists: fm.fileExists(atPath: decoded)
+                cwdExists: exists
             ).save(db)
         }
     }
