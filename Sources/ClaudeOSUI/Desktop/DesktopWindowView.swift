@@ -1,9 +1,13 @@
 import SwiftUI
 
-/// A single floating desktop window: traffic-light chrome, a draggable title bar,
-/// a resize grip, and arbitrary content. Drag/resize are applied as a *local*
-/// offset/size delta and only committed to the manager on release, so moving one
-/// window doesn't re-render (and re-layout the terminals of) every other window.
+/// A single floating desktop window: traffic-light chrome, a draggable title bar, a
+/// resize grip, and arbitrary content.
+///
+/// The chrome (and the drag/resize state) lives in `WindowChrome`, a `ViewModifier`,
+/// so the window's *content* is built once by this view and is NOT re-evaluated on
+/// every drag frame. During a move only the modifier's body re-runs (applying a new
+/// `.offset`); the wrapped content — e.g. Finder's 3-pane HSplitView + long list — is
+/// passed through untouched, which is what keeps dragging flicker-free.
 struct DesktopWindowView<Content: View>: View {
     let window: DesktopWindowManager.DesktopWindow
     let manager: DesktopWindowManager
@@ -11,10 +15,25 @@ struct DesktopWindowView<Content: View>: View {
     let onClose: () -> Void
     @ViewBuilder var content: () -> Content
 
+    var body: some View {
+        content()
+            .modifier(WindowChrome(window: window, manager: manager, isActive: isActive, onClose: onClose))
+    }
+}
+
+/// Window chrome + drag/resize behavior. Owns the high-frequency drag/resize state so
+/// that state changes re-run only this modifier, never the wrapped content's body.
+private struct WindowChrome: ViewModifier {
+    let window: DesktopWindowManager.DesktopWindow
+    let manager: DesktopWindowManager
+    let isActive: Bool
+    let onClose: () -> Void
+
     @State private var dragTranslation: CGSize = .zero
     @State private var resizeDelta: CGSize = .zero
     @State private var isDragging = false
     @State private var isResizing = false
+    @State private var hoveringControls = false
 
     private var liveSize: CGSize {
         CGSize(width: max(320, window.size.width + resizeDelta.width),
@@ -25,11 +44,11 @@ struct DesktopWindowView<Content: View>: View {
                 y: max(0, window.origin.y + dragTranslation.height))
     }
 
-    var body: some View {
+    func body(content: Content) -> some View {
         VStack(spacing: 0) {
             titleBar
             Divider()
-            content()
+            content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(width: liveSize.width, height: liveSize.height)
@@ -77,12 +96,10 @@ struct DesktopWindowView<Content: View>: View {
                     dragTranslation = .zero
                     let canvas = manager.canvasSize
                     // Only snap on a deliberate drag toward an edge. A small nudge on a
-                    // window that already sits near the edge should just move it, so the
-                    // user can park a window flush at the top/left corner.
+                    // window already near the edge should just move it, so the user can
+                    // park a window flush at the top/left corner.
                     let moved = hypot(value.translation.width, value.translation.height)
-                    // Use the unclamped predicted y for the top test, otherwise the
-                    // max(0, …) clamp above would make the top zone impossible to avoid.
-                    let rawY = window.origin.y + value.translation.height
+                    let rawY = window.origin.y + value.translation.height   // unclamped, for the top test
                     if moved > 24, rawY <= 4 {
                         manager.snap(window.id, .top)
                     } else if moved > 24, final.x <= 4 {
@@ -96,8 +113,6 @@ struct DesktopWindowView<Content: View>: View {
         )
         .onTapGesture(count: 2) { manager.zoom(window.id) }
     }
-
-    @State private var hoveringControls = false
 
     private func trafficLight(_ color: Color, symbol: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
