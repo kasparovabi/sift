@@ -48,19 +48,13 @@ private struct WindowChrome: ViewModifier {
         VStack(spacing: 0) {
             titleBar
             Divider()
-            ZStack {
-                // Real content stays mounted (state preserved) but is hidden while
-                // dragging — AppKit-backed List/HSplitView don't track a SwiftUI .offset
-                // smoothly and lag/flicker. A pure-SwiftUI placeholder moves perfectly.
-                content
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .opacity(isDragging ? 0 : 1)
-                if isDragging { dragPlaceholder }
-            }
+            content
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(width: liveSize.width, height: liveSize.height)
         // Solid opaque background: a translucent material re-samples the moving backdrop
-        // every frame and shimmers; opaque composites cleanly.
+        // every frame and shimmers; opaque composites cleanly. (Window content is pure
+        // SwiftUI, so it tracks the drag .offset smoothly without a placeholder.)
         .background(Color(red: 0.13, green: 0.14, blue: 0.17))
         .clipShape(RoundedRectangle(cornerRadius: 11))
         .overlay(
@@ -73,28 +67,6 @@ private struct WindowChrome: ViewModifier {
         .offset(x: liveOrigin.x, y: liveOrigin.y)
         .zIndex(window.z + (isDragging || isResizing ? 10_000 : 0))
         .simultaneousGesture(TapGesture().onEnded { manager.focus(window.id) })
-    }
-
-    /// Lightweight stand-in shown while dragging (icon + title on the solid window
-    /// background) so only pure SwiftUI moves with the offset.
-    private var dragPlaceholder: some View {
-        VStack(spacing: 10) {
-            Image(systemName: kindIcon)
-                .font(.system(size: 34, weight: .light))
-                .foregroundStyle(.secondary)
-            Text(window.title).font(.headline).foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    private var kindIcon: String {
-        switch window.kind {
-        case .finder:    return "macwindow"
-        case .dashboard: return "square.grid.2x2"
-        case .settings:  return "gearshape"
-        case .brain:     return "brain"
-        case .terminal:  return "terminal"
-        }
     }
 
     private var titleBar: some View {
@@ -112,7 +84,7 @@ private struct WindowChrome: ViewModifier {
         }
         .padding(.horizontal, 10)
         .frame(height: 30)
-        .background(.ultraThinMaterial)
+        .background(Color(red: 0.17, green: 0.18, blue: 0.22))
         .contentShape(Rectangle())
         .gesture(
             DragGesture(minimumDistance: 2)

@@ -19,11 +19,13 @@ public struct BrainView: View {
             Divider()
             switch mode {
             case .list:
-                HSplitView {
+                HStack(spacing: 0) {
                     listPane
-                        .frame(minWidth: 200, idealWidth: 360, maxHeight: .infinity)
+                        .frame(minWidth: 220, maxWidth: .infinity, maxHeight: .infinity)
+                        .layoutPriority(1)
+                    Divider()
                     detailPane
-                        .frame(minWidth: 120, maxHeight: .infinity)
+                        .frame(minWidth: 220, maxWidth: .infinity, maxHeight: .infinity)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             case .graph:
@@ -90,12 +92,23 @@ public struct BrainView: View {
     }
 
     private var atomList: some View {
-        @Bindable var bvm = vm
-        return List(vm.atoms, selection: $bvm.selectedAtomId) { atom in
-            AtomRow(atom: atom)
+        // Pure-SwiftUI list so the Brain window also drags without AppKit-layer flicker.
+        ScrollView {
+            LazyVStack(spacing: 0) {
+                ForEach(vm.atoms) { atom in
+                    AtomRow(atom: atom)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(vm.selectedAtomId == atom.id
+                                    ? Color.accentColor.opacity(0.22) : Color.clear)
+                        .contentShape(Rectangle())
+                        .onTapGesture { vm.selectedAtomId = atom.id }
+                    Divider().opacity(0.25)
+                }
+            }
         }
-        .listStyle(.inset)
-        .frame(maxHeight: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     // MARK: - Detail pane

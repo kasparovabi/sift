@@ -15,32 +15,46 @@ struct SessionListView: View {
         VStack(spacing: 0) {
             header
             Divider()
-            List(index.sessions, selection: $index.selectedSessionId) { session in
-                SessionRow(session: session, isLive: isLive(session.sessionId))
-                    .contextMenu {
-                        Button(session.pinned ? "Sabitlemeyi kaldır" : "Sabitle",
-                               systemImage: session.pinned ? "pin.slash" : "pin") {
-                            index.togglePin(session.sessionId)
-                        }
-                        Button(session.archived ? "Arşivden çıkar" : "Arşivle",
-                               systemImage: session.archived ? "tray.and.arrow.up" : "archivebox") {
-                            index.toggleArchive(session.sessionId)
-                        }
-                        Button("Düzenle (ad / etiket)…", systemImage: "pencil") { editingSession = session }
-                        Divider()
-                        Button("Resume komutunu kopyala", systemImage: "doc.on.doc") {
-                            copyResumeCommand(session)
-                        }
-                        Button("Oturum id'sini kopyala", systemImage: "number") {
-                            copyToPasteboard(session.sessionId)
-                        }
-                        if let cwd = session.cwd {
-                            Button("Dizini Finder'da aç", systemImage: "folder") { openInFinder(cwd) }
-                        }
-                        Button("Transkript dosyasını göster", systemImage: "doc.text.magnifyingglass") {
-                            revealInFinder(session.filePath)
-                        }
+            // Pure-SwiftUI list (ScrollView + LazyVStack, not List/NSTableView) so it
+            // tracks the emulated window's drag .offset smoothly without flicker.
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    ForEach(index.sessions) { session in
+                        SessionRow(session: session, isLive: isLive(session.sessionId))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(index.selectedSessionId == session.sessionId
+                                        ? Color.accentColor.opacity(0.22) : Color.clear)
+                            .contentShape(Rectangle())
+                            .onTapGesture { index.selectedSessionId = session.sessionId }
+                            .contextMenu {
+                                Button(session.pinned ? "Sabitlemeyi kaldır" : "Sabitle",
+                                       systemImage: session.pinned ? "pin.slash" : "pin") {
+                                    index.togglePin(session.sessionId)
+                                }
+                                Button(session.archived ? "Arşivden çıkar" : "Arşivle",
+                                       systemImage: session.archived ? "tray.and.arrow.up" : "archivebox") {
+                                    index.toggleArchive(session.sessionId)
+                                }
+                                Button("Düzenle (ad / etiket)…", systemImage: "pencil") { editingSession = session }
+                                Divider()
+                                Button("Resume komutunu kopyala", systemImage: "doc.on.doc") {
+                                    copyResumeCommand(session)
+                                }
+                                Button("Oturum id'sini kopyala", systemImage: "number") {
+                                    copyToPasteboard(session.sessionId)
+                                }
+                                if let cwd = session.cwd {
+                                    Button("Dizini Finder'da aç", systemImage: "folder") { openInFinder(cwd) }
+                                }
+                                Button("Transkript dosyasını göster", systemImage: "doc.text.magnifyingglass") {
+                                    revealInFinder(session.filePath)
+                                }
+                            }
+                        Divider().opacity(0.25)
                     }
+                }
             }
             .overlay {
                 if index.sessions.isEmpty && !index.isScanning {

@@ -9,15 +9,20 @@ import ClaudeOSRuntime
 /// desktop, not inside this window).
 struct FinderView: View {
     var body: some View {
-        // HSplitView (not NavigationSplitView) so no controls leak into the host
-        // window's toolbar — everything lives inside this emulated window.
-        HSplitView {
+        // HStack (not HSplitView/NSSplitView, not NavigationSplitView): pure SwiftUI so
+        // the panes track the emulated window's drag .offset smoothly without flicker,
+        // and nothing leaks into the host window's toolbar.
+        HStack(spacing: 0) {
             ProjectSidebar()
-                .frame(minWidth: 170, idealWidth: 205, maxHeight: .infinity)
+                .frame(width: 200)
+                .frame(maxHeight: .infinity)
+            Divider()
             SessionListView()
-                .frame(minWidth: 240, idealWidth: 340, maxHeight: .infinity)
+                .frame(minWidth: 240, maxWidth: .infinity, maxHeight: .infinity)
+                .layoutPriority(1)
+            Divider()
             FinderDetail()
-                .frame(minWidth: 240, maxHeight: .infinity)
+                .frame(minWidth: 220, maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 }

@@ -2,47 +2,37 @@ import SwiftUI
 import ClaudeOSCore
 import ClaudeOSIndex
 
+/// Pure-SwiftUI sidebar (ScrollView + LazyVStack, not List/NSTableView) so it tracks
+/// the emulated window's drag `.offset` smoothly without AppKit-layer flicker.
 struct ProjectSidebar: View {
     @Environment(IndexCoordinator.self) private var index
 
     var body: some View {
-        @Bindable var index = index
-        let selection = Binding<IndexCoordinator.SidebarItem?>(
-            get: { index.sidebarSelection },
-            set: { index.sidebarSelection = $0 ?? .all }
-        )
-        List(selection: selection) {
-            Section("Listeler") {
-                Label("Tüm oturumlar", systemImage: "tray.full")
-                    .tag(Optional(IndexCoordinator.SidebarItem.all))
-                Label("Bugün", systemImage: "sun.max")
-                    .tag(Optional(IndexCoordinator.SidebarItem.today))
-                Label("Sabitlenenler", systemImage: "pin")
-                    .tag(Optional(IndexCoordinator.SidebarItem.pinned))
-            }
-            Section {
-                ForEach(index.projects) { project in
-                    ProjectRow(project: project)
-                        .tag(Optional(IndexCoordinator.SidebarItem.project(project.id)))
-                        .contextMenu {
-                            Button(project.pinned ? "Sabitlemeyi kaldır" : "Sabitle",
-                                   systemImage: project.pinned ? "pin.slash" : "pin") {
-                                index.toggleProjectPin(project.id)
-                            }
-                        }
+        VStack(spacing: 0) {
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 2) {
+                    sectionHeader("Listeler")
+                    smartRow("Tüm oturumlar", "tray.full", .all)
+                    smartRow("Bugün", "sun.max", .today)
+                    smartRow("Sabitlenenler", "pin", .pinned)
+
+                    sectionHeader("Projeler (\(index.projects.count))")
+                    ForEach(index.projects) { project in
+                        projectRow(project)
+                    }
                 }
-            } header: {
-                HStack {
-                    Text("Projeler")
-                    Spacer()
-                    Text("\(index.projects.count)").foregroundStyle(.secondary)
-                }
+                .padding(8)
             }
+            Divider()
+            Button {
+                Task { await index.rescan() }
+            } label: {
+                Label("Yeniden tara", systemImage: "arrow.clockwise").frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderless)
+            .padding(8)
+            .disabled(index.isScanning)
         }
-        // .inset (opaque), not .sidebar: the sidebar style uses behind-window vibrancy
-        // that re-samples the desktop backdrop and shimmers when the emulated window is
-        // dragged across it.
-        .listStyle(.inset)
         .overlay {
             if index.isScanning {
                 VStack(spacing: 8) {
@@ -53,17 +43,57 @@ struct ProjectSidebar: View {
                 ContentUnavailableView("Proje yok", systemImage: "folder", description: Text("Yeniden tara'ya bas"))
             }
         }
-        .safeAreaInset(edge: .bottom) {
-            Button {
-                Task { await index.rescan() }
-            } label: {
-                Label("Yeniden tara", systemImage: "arrow.clockwise")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderless)
-            .padding(8)
-            .disabled(index.isScanning)
+    }
+
+    private func sectionHeader(_ title: String) -> some View {
+        Text(title)
+            .font(.caption).fontWeight(.semibold)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 8)
+            .padding(.top, 8)
+            .padding(.bottom, 2)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func isSelected(_ item: IndexCoordinator.SidebarItem) -> Bool {
+        index.sidebarSelection == item
+    }
+
+    private func smartRow(_ title: String, _ icon: String, _ item: IndexCoordinator.SidebarItem) -> some View {
+        rowShell(selected: isSelected(item)) { index.sidebarSelection = item } label: {
+            Label(title, systemImage: icon).font(.callout)
         }
+    }
+
+    private func projectRow(_ project: Project) -> some View {
+        rowShell(selected: isSelected(.project(project.id))) {
+            index.sidebarSelection = .project(project.id)
+        } label: {
+            ProjectRow(project: project)
+        }
+        .contextMenu {
+            Button(project.pinned ? "Sabitlemeyi kaldır" : "Sabitle",
+                   systemImage: project.pinned ? "pin.slash" : "pin") {
+                index.toggleProjectPin(project.id)
+            }
+        }
+    }
+
+    /// A selectable row: tap to select, accent background when selected.
+    @ViewBuilder
+    private func rowShell<Label: View>(selected: Bool, action: @escaping () -> Void,
+                                       @ViewBuilder label: () -> Label) -> some View {
+        Button(action: action) {
+            label()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .foregroundStyle(selected ? Color.white : Color.primary)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(selected ? Color.accentColor : Color.clear,
+                            in: RoundedRectangle(cornerRadius: 6))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -84,13 +114,9 @@ private struct ProjectRow: View {
             }
             Spacer(minLength: 4)
             if project.pinned {
-                Image(systemName: "pin.fill")
-                    .font(.caption2)
-                    .foregroundStyle(.orange)
+                Image(systemName: "pin.fill").font(.caption2).foregroundStyle(.orange)
             }
-            Text("\(project.sessionCount)")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            Text("\(project.sessionCount)").font(.caption).foregroundStyle(.secondary)
         }
         .help(project.decodedPath)
     }
