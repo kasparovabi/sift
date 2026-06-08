@@ -15,6 +15,7 @@ public struct DesktopView: View {
     @Environment(DesktopWindowManager.self) private var manager
     @Environment(BrainViewModel.self) private var brainVM
     @State private var pinnedIcons: [SessionSummary] = []
+    @State private var attached = false
 
     public init() {}
 
@@ -24,15 +25,6 @@ public struct DesktopView: View {
                 wallpaper
                     .contextMenu { desktopMenu }
                 desktopIcons
-                ZStack(alignment: .topLeading) {
-                    ForEach(manager.windows.filter { !$0.minimized }) { window in
-                        DesktopWindowView(window: window, manager: manager,
-                                          isActive: window.z == topWindowZ,
-                                          onClose: { close(window) }) {
-                            content(for: window)
-                        }
-                    }
-                }
                 VStack(spacing: 0) {
                     DesktopTopBar()
                     Spacer()
@@ -42,6 +34,7 @@ public struct DesktopView: View {
             }
             .ignoresSafeArea()
             .background { WindowChromeHider() }
+            .background { WindowAttacher { attachIfNeeded($0) } }
             .onAppear { manager.canvasSize = geo.size }
             .onChange(of: geo.size) { _, newValue in manager.canvasSize = newValue }
             .task {
@@ -95,10 +88,6 @@ public struct DesktopView: View {
         }
     }
 
-    private var topWindowZ: Double? {
-        manager.windows.filter { !$0.minimized }.map(\.z).max()
-    }
-
     @ViewBuilder private var desktopMenu: some View {
         Button("Yeni oturum…", systemImage: "plus") { newFolderSession() }
         Button("Finder", systemImage: "macwindow") { manager.openFinder() }
@@ -120,32 +109,19 @@ public struct DesktopView: View {
         .ignoresSafeArea()
     }
 
-    @ViewBuilder private func content(for window: DesktopWindowManager.DesktopWindow) -> some View {
-        switch window.kind {
-        case .finder:
-            FinderView()
-        case .dashboard:
-            DashboardView(onResume: resume, onNewFolder: newFolderSession)
-        case .settings:
-            SettingsView()
-        case .brain:
-            BrainView()
-                .environment(brainVM)
-        case .terminal(let id):
-            if let session = runtime.sessions.first(where: { $0.id == id }) {
-                TerminalEmulatorView(session: session)
-            } else {
-                Color.black
-            }
+    /// Wire the manager to the host NSWindow once it exists. Each emulated window then
+    /// becomes a real child NSWindow hosting `WindowContent`.
+    private func attachIfNeeded(_ window: NSWindow) {
+        guard !attached else { return }
+        attached = true
+        // Capture environment objects now (valid during a view update); the content
+        // builder may run later (when a session opens) when @Environment on `self` wouldn't be.
+        let index = self.index, runtime = self.runtime, monitor = self.monitor
+        let manager = self.manager, brainVM = self.brainVM
+        manager.attach(parentWindow: window) { logical in
+            NSHostingView(rootView: WindowContent(window: logical, manager: manager, index: index,
+                                                  runtime: runtime, monitor: monitor, brainVM: brainVM))
         }
-    }
-
-    private func close(_ window: DesktopWindowManager.DesktopWindow) {
-        if case .terminal(let id) = window.kind,
-           let session = runtime.sessions.first(where: { $0.id == id }) {
-            runtime.close(session)
-        }
-        manager.close(window.id)
     }
 
     private func resume(_ session: SessionSummary) {
@@ -166,6 +142,83 @@ public struct DesktopView: View {
             try? await runtime.launch(SessionLaunchRequest(
                 mode: .fresh, cwd: url.path, projectId: "", title: url.lastPathComponent
             ))
+        }
+    }
+}
+
+/// SwiftUI root hosted inside each emulated window's NSWindow. Holds explicit
+/// dependencies (not @Environment) so it stays valid when the manager builds it lazily.
+private struct WindowContent: View {
+    let window: DesktopWindowManager.DesktopWindow
+    let manager: DesktopWindowManager
+    let index: IndexCoordinator
+    let runtime: SessionRuntime
+    let monitor: LiveSessionMonitor
+    let brainVM: BrainViewModel
+
+    var body: some View {
+        DesktopWindowView(window: window, manager: manager, onClose: closeSelf) {
+            inner
+        }
+        .environment(index)
+        .environment(runtime)
+        .environment(monitor)
+        .environment(manager)
+        .environment(brainVM)
+    }
+
+    @ViewBuilder private var inner: some View {
+        switch window.kind {
+        case .finder:    FinderView()
+        case .dashboard: DashboardView(onResume: resume, onNewFolder: newFolder)
+        case .settings:  SettingsView()
+        case .brain:     BrainView()
+        case .terminal(let id):
+            if let session = runtime.sessions.first(where: { $0.id == id }) {
+                TerminalEmulatorView(session: session)
+            } else {
+                Color.black
+            }
+        }
+    }
+
+    private func closeSelf() {
+        if case .terminal(let id) = window.kind,
+           let session = runtime.sessions.first(where: { $0.id == id }) {
+            runtime.close(session)
+        }
+        manager.close(window.id)
+    }
+
+    private func resume(_ session: SessionSummary) {
+        Task {
+            try? await runtime.launch(SessionLaunchRequest(
+                mode: .resume(sessionId: session.sessionId), cwd: session.cwd ?? NSHomeDirectory(),
+                projectId: session.projectId, gitBranch: session.gitBranch, title: session.displayTitle))
+        }
+    }
+
+    private func newFolder() {
+        guard let url = chooseClaudeDirectory() else { return }
+        Task {
+            try? await runtime.launch(SessionLaunchRequest(
+                mode: .fresh, cwd: url.path, projectId: "", title: url.lastPathComponent))
+        }
+    }
+}
+
+/// Captures the host NSWindow so the manager can parent child windows to it.
+private struct WindowAttacher: NSViewRepresentable {
+    let onWindow: (NSWindow) -> Void
+    func makeNSView(context: Context) -> NSView { AttachView(onWindow: onWindow) }
+    func updateNSView(_ nsView: NSView, context: Context) { (nsView as? AttachView)?.onWindow = onWindow }
+    final class AttachView: NSView {
+        var onWindow: (NSWindow) -> Void
+        init(onWindow: @escaping (NSWindow) -> Void) { self.onWindow = onWindow; super.init(frame: .zero) }
+        required init?(coder: NSCoder) { nil }
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if let w = window { onWindow(w) }
         }
     }
 }
