@@ -19,24 +19,28 @@ struct QuickOpenView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                Image(systemName: "magnifyingglass").foregroundStyle(Wasteland.accent)
                 TextField("Tüm oturumlarda ara…", text: $query)
                     .textFieldStyle(.plain)
-                    .font(.title2)
+                    .font(Wasteland.font(20))
+                    .foregroundStyle(Wasteland.textPrimary)
+                    .tint(Wasteland.acid)
                     .focused($focused)
                     .onSubmit { resumeSelected() }
             }
             .padding(14)
-            Divider()
+            Divider().overlay(Wasteland.border)
             if !filteredCommands.isEmpty {
                 VStack(spacing: 2) {
                     ForEach(filteredCommands) { command in
                         Button(action: command.run) {
                             HStack(spacing: 10) {
-                                Image(systemName: command.icon).foregroundStyle(.secondary).frame(width: 18)
+                                Image(systemName: command.icon).foregroundStyle(Wasteland.cyan).frame(width: 18)
                                 Text(command.title)
+                                    .font(Wasteland.font(13))
+                                    .foregroundStyle(Wasteland.textPrimary)
                                 Spacer()
-                                Text("Eylem").font(.caption2).foregroundStyle(.tertiary)
+                                Text("Eylem").font(Wasteland.font(10)).foregroundStyle(Wasteland.textDim)
                             }
                             .padding(.horizontal, 10)
                             .padding(.vertical, 7)
@@ -46,12 +50,24 @@ struct QuickOpenView: View {
                     }
                 }
                 .padding(6)
-                Divider()
+                Divider().overlay(Wasteland.border)
             }
             resultList
+            Divider().overlay(Wasteland.border)
+            // Visible controls so a keyboard-shy user knows how to drive the panel.
+            HStack(spacing: 14) {
+                hint("↑↓", "gez")
+                hint("↵", "aç")
+                hint("esc", "kapat")
+                Spacer()
+                if !results.isEmpty {
+                    Text("\(results.count) oturum").font(Wasteland.font(10)).foregroundStyle(Wasteland.textDim)
+                }
+            }
+            .padding(.horizontal, 12).padding(.vertical, 6)
         }
         .frame(width: 660, height: 440)
-        .background(.regularMaterial)
+        .wastelandPanel(glow: true)
         .onAppear {
             focused = true
             Task { await reload() }
@@ -67,7 +83,8 @@ struct QuickOpenView: View {
             VStack {
                 Spacer()
                 Text(query.isEmpty ? "Yazmaya başla" : "Sonuç yok")
-                    .foregroundStyle(.secondary)
+                    .font(Wasteland.font(13))
+                    .foregroundStyle(Wasteland.textDim)
                 Spacer()
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -91,6 +108,17 @@ struct QuickOpenView: View {
                     withAnimation(.easeOut(duration: 0.1)) { proxy.scrollTo(newValue, anchor: .center) }
                 }
             }
+        }
+    }
+
+    private func hint(_ key: String, _ label: String) -> some View {
+        HStack(spacing: 4) {
+            Text(key)
+                .font(Wasteland.font(10))
+                .foregroundStyle(Wasteland.acid)
+                .padding(.horizontal, 5).padding(.vertical, 1)
+                .background(Wasteland.surfaceHi, in: RoundedRectangle(cornerRadius: 4))
+            Text(label).font(Wasteland.font(10)).foregroundStyle(Wasteland.textDim)
         }
     }
 
@@ -157,28 +185,29 @@ private struct QuickOpenRow: View {
 
     var body: some View {
         HStack(spacing: 10) {
+            // Project-tinted icon so rows read in the same colour system as the list and detail.
             Image(systemName: "terminal")
-                .foregroundStyle(isSelected ? Color.white : .secondary)
+                .foregroundStyle(isSelected ? Wasteland.accent : ProjectPalette.color(for: session.cwd ?? session.projectId))
             VStack(alignment: .leading, spacing: 1) {
                 Text(session.displayTitle)
-                    .fontWeight(.medium)
+                    .font(Wasteland.font(13, weight: .medium))
                     .lineLimit(1)
                 Text(session.cwd ?? "")
-                    .font(.caption)
-                    .foregroundStyle(isSelected ? Color.white.opacity(0.8) : .secondary)
+                    .font(Wasteland.font(11))
+                    .foregroundStyle(Wasteland.textDim)
                     .lineLimit(1)
                     .truncationMode(.head)
             }
             Spacer()
             if let date = session.lastActivity {
                 Text(date, format: .relative(presentation: .named))
-                    .font(.caption2)
-                    .foregroundStyle(isSelected ? Color.white.opacity(0.8) : Color.secondary)
+                    .font(Wasteland.font(10))
+                    .foregroundStyle(Wasteland.textDim)
             }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
-        .foregroundStyle(isSelected ? Color.white : Color.primary)
-        .background(isSelected ? Color.accentColor : Color.clear, in: RoundedRectangle(cornerRadius: 6))
+        .foregroundStyle(isSelected ? Wasteland.accent : Wasteland.textPrimary)
+        .background(isSelected ? Wasteland.surfaceHi : Color.clear, in: RoundedRectangle(cornerRadius: 6))
     }
 }

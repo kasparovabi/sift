@@ -39,11 +39,23 @@ public final class BrainIngester: @unchecked Sendable {
         let claudePath = self.claudePath
         let env = self.env
         let cap = self.cap
+        let projectsRoot = self.projectsRoot
         queue.async {
             guard let text = Self.boundedRead(path, cap: cap) else { return }
-            let extractor = Extractor(runner: ProcessRunner(), claudePath: claudePath, env: env)
+            guard !Self.isNoiseTranscript(text) else { return }
+            let extractor = Extractor(runner: ProcessRunner(), claudePath: claudePath, env: env,
+                                      projectsRoot: projectsRoot)
             try? service.ingestSession(transcript: text, proj: proj, src: claudeSessionId, extractor: extractor)
         }
+    }
+
+    /// Transcripts not worth ingesting: our own extraction runs, and other tools' headless
+    /// observer sessions (claude-mem, memory agents). These are machine-generated and churn
+    /// constantly; ingesting them just burns `claude -p` cycles and bogs the machine down.
+    static func isNoiseTranscript(_ text: String) -> Bool {
+        if Extractor.looksLikeExtraction(text) { return true }
+        return text.contains("You are a Claude-Mem")
+            || text.contains("you are continuing to observe the primary Claude session")
     }
 
     /// Ingest an arbitrary JSONL transcript by absolute path.
@@ -55,6 +67,7 @@ public final class BrainIngester: @unchecked Sendable {
         let claudePath = self.claudePath
         let env = self.env
         let cap = self.cap
+        let projectsRoot = self.projectsRoot
         queue.async {
             let url = URL(fileURLWithPath: jsonlPath)
             let claudeSessionId = url.deletingPathExtension().lastPathComponent
@@ -65,7 +78,9 @@ public final class BrainIngester: @unchecked Sendable {
                 cwd = PathCodec.decode(url.deletingLastPathComponent().lastPathComponent)
             }
             guard let text = Self.boundedRead(jsonlPath, cap: cap) else { return }
-            let extractor = Extractor(runner: ProcessRunner(), claudePath: claudePath, env: env)
+            guard !Self.isNoiseTranscript(text) else { return }
+            let extractor = Extractor(runner: ProcessRunner(), claudePath: claudePath, env: env,
+                                      projectsRoot: projectsRoot)
             try? service.ingestSession(transcript: text, proj: cwd, src: claudeSessionId, extractor: extractor)
         }
     }

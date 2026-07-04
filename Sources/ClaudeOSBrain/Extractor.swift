@@ -49,9 +49,15 @@ public struct Extractor {
     public let runner: CommandRunning
     public let claudePath: String
     public let env: [String: String]
+    /// Root of `~/.claude/projects`. When set, the transcript a persisted extraction run
+    /// creates is deleted afterward so it never reaches the resume picker. nil disables
+    /// cleanup — used by unit tests whose stub runners write no files.
+    public let projectsRoot: URL?
 
-    public init(runner: CommandRunning, claudePath: String, env: [String: String]) {
+    public init(runner: CommandRunning, claudePath: String, env: [String: String],
+                projectsRoot: URL? = nil) {
         self.runner = runner; self.claudePath = claudePath; self.env = env
+        self.projectsRoot = projectsRoot
     }
 
     public static let instruction = """
@@ -62,10 +68,36 @@ public struct Extractor {
         Geçici sohbeti, ham hata çıktısını, önemsiz şeyleri atla. Transkript:
         """
 
+    /// True if a transcript is itself one of our extraction runs (its prompt is the
+    /// instruction below). Such sessions must never be ingested — that would feed garbage
+    /// atoms into the brain. Extraction now persists (the --no-session-persistence flag
+    /// returned empty results), so this check is what breaks the auto-capture feedback loop.
+    public static func looksLikeExtraction(_ text: String) -> Bool {
+        text.contains("KALICI DEĞERLİ bilgi çıkar")
+    }
+
     public func extract(transcript: String, proj: String?) throws -> ExtractionResult {
         let prompt = Self.instruction + "\n" + transcript
-        let raw = try runner.run(claudePath, ["-p", prompt, "--output-format", "json"], stdin: nil, env: env)
+        // Deliberately NO --no-session-persistence. On current claude builds that flag makes
+        // `-p ... --output-format json` return an EMPTY result (the agent loops internally and
+        // never emits a final answer), so extraction silently produced zero atoms. The two
+        // duties that flag used to serve are handled elsewhere now:
+        //   • re-ingest feedback loop → BrainIngester.isNoiseTranscript drops any transcript
+        //     whose prompt is our extraction instruction (Extractor.looksLikeExtraction).
+        //   • resume-list pollution    → the persisted run is cleaned up below, and
+        //     IndexStore.userSessionPredicate hides any that slip through.
+        let raw = try runner.run(claudePath,
+                                 ["-p", prompt, "--output-format", "json"],
+                                 stdin: nil, env: env)
+        Self.deletePersistedSession(envelope: raw, projectsRoot: projectsRoot)
         let json = Self.unwrap(raw)
+        // An empty result means "nothing to extract", not a parse error — return an empty
+        // result instead of throwing. The caller ingests via `try?`, so a throw here is
+        // swallowed and indistinguishable from a successful empty extraction; that is exactly
+        // how the --no-session-persistence bug stayed invisible.
+        if json.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return ExtractionResult(atoms: [], relations: [])
+        }
         return try Self.parse(json)
     }
 
@@ -77,6 +109,34 @@ public struct Extractor {
             return raw
         }
         return result
+    }
+
+    /// The `session_id` from a `claude --output-format json` envelope, if present and non-empty.
+    static func sessionId(fromEnvelope raw: String) -> String? {
+        guard let data = raw.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let sid = obj["session_id"] as? String, !sid.isEmpty else { return nil }
+        return sid
+    }
+
+    /// Best-effort removal of the transcript a persisted extraction run just created. The run
+    /// has to persist (--no-session-persistence empties the result), so we delete its file by
+    /// the session_id the envelope reports, keeping the real `claude --resume` picker free of
+    /// machine-made extraction sessions. BrainIngester.isNoiseTranscript already stops them
+    /// re-entering the brain, so this only keeps ~/.claude/projects tidy. No-op when
+    /// projectsRoot is nil (tests) or the envelope carries no session_id.
+    static func deletePersistedSession(envelope raw: String, projectsRoot: URL?) {
+        guard let projectsRoot, let sid = sessionId(fromEnvelope: raw) else { return }
+        let fm = FileManager.default
+        guard let dirs = try? fm.contentsOfDirectory(at: projectsRoot,
+                                                     includingPropertiesForKeys: nil) else { return }
+        for dir in dirs {
+            let candidate = dir.appendingPathComponent("\(sid).jsonl")
+            if fm.fileExists(atPath: candidate.path) {
+                try? fm.removeItem(at: candidate)
+                return
+            }
+        }
     }
 
     /// Accepts either a plain JSON string `"Name"` or an object `{"n":"Name","k":"lib"}`.

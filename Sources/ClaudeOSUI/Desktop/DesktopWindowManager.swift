@@ -15,6 +15,11 @@ public final class DesktopWindowManager {
         case dashboard
         case settings
         case brain
+        case quickTask
+        case scheduled
+        case loop
+        case focusTimer
+        case folders
         case terminal(TerminalSession.ID)
     }
 
@@ -31,9 +36,11 @@ public final class DesktopWindowManager {
 
     public private(set) var windows: [DesktopWindow] = []
     public var wallpaper: Int = max(0, UserDefaults.standard.integer(forKey: "claudeos.wallpaper"))
+    public private(set) var stickyNotes: [StickyNote] = StickyNoteStore.load()
     @ObservationIgnored public var canvasSize: CGSize = .zero
     @ObservationIgnored private var topZ: Double = 0
     @ObservationIgnored private var cascade: Int = 0
+    @ObservationIgnored private var noteCascade: Int = 0
 
     @ObservationIgnored private var controllers: [UUID: WindowHostController] = [:]
     @ObservationIgnored private weak var parentWindow: NSWindow?
@@ -45,6 +52,68 @@ public final class DesktopWindowManager {
         wallpaper = index
         UserDefaults.standard.set(index, forKey: "claudeos.wallpaper")
     }
+
+    // MARK: - Sticky notes (free-floating desktop notes)
+
+    /// Add a fresh blank note, cascaded down the upper-left so new ones don't stack exactly.
+    public func addStickyNote() {
+        let step = CGFloat(noteCascade % 7) * 26
+        noteCascade += 1
+        let note = StickyNote(colorIndex: stickyNotes.count % StickyNote.palette.count,
+                              x: 150 + step, y: 120 + step)
+        stickyNotes.append(note)
+        persistNotes()
+    }
+
+    public func setNoteText(_ id: UUID, _ text: String) {
+        guard let i = stickyNotes.firstIndex(where: { $0.id == id }) else { return }
+        stickyNotes[i].text = text
+        persistNotes()
+    }
+
+    public func moveNote(_ id: UUID, to point: CGPoint) {
+        guard let i = stickyNotes.firstIndex(where: { $0.id == id }) else { return }
+        let p = clampNote(point)
+        stickyNotes[i].x = p.x
+        stickyNotes[i].y = p.y
+        persistNotes()
+    }
+
+    public func cycleNoteColor(_ id: UUID) {
+        guard let i = stickyNotes.firstIndex(where: { $0.id == id }) else { return }
+        stickyNotes[i].colorIndex = (stickyNotes[i].colorIndex + 1) % StickyNote.palette.count
+        persistNotes()
+    }
+
+    public func removeNote(_ id: UUID) {
+        stickyNotes.removeAll { $0.id == id }
+        persistNotes()
+    }
+
+    /// Pull any notes that fell outside the current canvas back into view (e.g. after the
+    /// window shrank since last launch). Cheap; safe to call on resize.
+    public func clampAllNotes() {
+        guard canvasSize != .zero else { return }
+        var changed = false
+        for i in stickyNotes.indices {
+            let p = clampNote(CGPoint(x: stickyNotes[i].x, y: stickyNotes[i].y))
+            if p.x != stickyNotes[i].x || p.y != stickyNotes[i].y {
+                stickyNotes[i].x = p.x; stickyNotes[i].y = p.y; changed = true
+            }
+        }
+        if changed { persistNotes() }
+    }
+
+    /// Keep a note's centre inside the work area (below the top bar, above the dock).
+    private func clampNote(_ point: CGPoint) -> CGPoint {
+        guard canvasSize != .zero else { return point }
+        let halfW: CGFloat = 88, halfH: CGFloat = 75
+        let x = min(max(point.x, halfW), max(halfW, canvasSize.width - halfW))
+        let y = min(max(point.y, 28 + halfH), max(28 + halfH, canvasSize.height - 80 - halfH))
+        return CGPoint(x: x, y: y)
+    }
+
+    private func persistNotes() { StickyNoteStore.save(stickyNotes) }
 
     // MARK: - Attach (called once by DesktopView when the host NSWindow exists)
 
@@ -70,6 +139,11 @@ public final class DesktopWindowManager {
     public func openDashboard() { openSystem(.dashboard, "Genel Bakış", CGSize(width: 700, height: 540)) }
     public func openSettings() { openSystem(.settings, "Ayarlar", CGSize(width: 520, height: 360)) }
     public func openBrain() { openSystem(.brain, "Beyin", CGSize(width: 820, height: 560)) }
+    public func openQuickTask() { openSystem(.quickTask, "Hızlı görev", CGSize(width: 560, height: 480)) }
+    public func openScheduled() { openSystem(.scheduled, "Zamanlanmış görevler", CGSize(width: 600, height: 520)) }
+    public func openLoop() { openSystem(.loop, "Döngü", CGSize(width: 600, height: 620)) }
+    public func openFocusTimer() { openSystem(.focusTimer, "Odak", CGSize(width: 360, height: 430)) }
+    public func openFolders() { openSystem(.folders, "Klasörlerim", CGSize(width: 480, height: 460)) }
 
     private func openSystem(_ kind: Kind, _ title: String, _ size: CGSize) {
         if let existing = windows.first(where: { $0.kind == kind }) {

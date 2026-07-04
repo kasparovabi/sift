@@ -12,6 +12,8 @@ public final class IndexCoordinator {
     public private(set) var sessions: [SessionSummary] = []
     public private(set) var isScanning = false
     public private(set) var totalSessionCount = 0
+    /// Sessions you started today (local), for the sidebar's "Bugün" badge.
+    public private(set) var todayCount = 0
 
     public enum SidebarItem: Hashable, Sendable {
         case all, today, pinned
@@ -57,6 +59,20 @@ public final class IndexCoordinator {
     public var showArchived = false {
         didSet { if oldValue != showArchived { Task { await reloadSessions() } } }
     }
+    /// When on (the default), the browser only lists sessions the user actually started,
+    /// hiding the machine-made observer/memory/extraction runs other tools spawn. Also
+    /// keeps the sidebar project list and the total count in step.
+    public var onlyUserSessions = true {
+        didSet {
+            if oldValue != onlyUserSessions {
+                Task {
+                    await reloadProjects()
+                    await reloadSessions()
+                    await reloadCount()
+                }
+            }
+        }
+    }
     public private(set) var branches: [String] = []
     public private(set) var entrypoints: [String] = []
     public var allTags: [String] { metaStore.allTags }
@@ -91,9 +107,12 @@ public final class IndexCoordinator {
         await reloadProjects()
         await reloadSessions()
         await loadFilterOptions()
-        totalSessionCount = (try? await store.sessionCount()) ?? 0
+        await reloadCount()
+        // Use the *unfiltered* total to decide whether the index is empty and needs a
+        // first scan (the filtered count could be 0 even when the DB holds tool sessions).
+        let rawTotal = (try? await store.sessionCount()) ?? 0
         let needsBackfill = (try? await store.needsContentBackfill()) ?? false
-        if totalSessionCount == 0 || needsBackfill { await rescan() }
+        if rawTotal == 0 || needsBackfill { await rescan() }
         startWatching()
     }
 
@@ -129,8 +148,9 @@ public final class IndexCoordinator {
     }
 
     /// One-off search for the quick-open panel; does not disturb the Library's list.
+    /// Excludes tool-made sessions so the spotlight finder only surfaces real work.
     public func quickSearch(_ query: String, limit: Int = 40) async -> [SessionSummary] {
-        let results = (try? await store.search(query, filters: SearchFilters())) ?? []
+        let results = (try? await store.search(query, filters: SearchFilters(excludeTools: true))) ?? []
         return overlay(Array(results.prefix(limit)))
     }
 
@@ -138,6 +158,42 @@ public final class IndexCoordinator {
     public func recentSessions(limit: Int = 8) async -> [SessionSummary] {
         let results = (try? await store.search("", filters: SearchFilters())) ?? []
         return overlay(Array(results.prefix(limit)))
+    }
+
+    /// Most recent sessions the *user* actually started — filters out the machine-made
+    /// observer/memory/extraction sessions other tools spawn, so "continue where you left
+    /// off" and similar one-click actions point at real work.
+    public func recentUserSessions(limit: Int = 8) async -> [SessionSummary] {
+        let results = (try? await store.search("", filters: SearchFilters(excludeTools: true))) ?? []
+        return Array(overlay(results).filter(Self.isUserStarted).prefix(limit))
+    }
+
+    /// Today's user-started sessions (local day), most-recent first — for the daily digest.
+    public func todaysSessions(limit: Int = 30) async -> [SessionSummary] {
+        let recents = await recentUserSessions(limit: 200)
+        let cal = Calendar.current
+        return Array(recents.filter { cal.isDateInToday($0.lastActivity ?? .distantPast) }.prefix(limit))
+    }
+
+    /// True for sessions a person started; false for tool-spawned ones (claude-mem
+    /// observer, "memory agent" runs, our own brain extractions).
+    public static func isUserStarted(_ s: SessionSummary) -> Bool {
+        // SDK/headless launches (subagents, workflow agents, claude-mem observers, our own
+        // `claude -p` loop/quick-task runs) carry an `sdk-*` entrypoint; interactive work is
+        // `cli` or `claude-desktop`. Keep NULL so an unknown launcher is never hidden.
+        if let ep = s.entrypoint, ep.hasPrefix("sdk-") { return false }
+        if (s.cwd ?? "").contains(".claude-mem") { return false }
+        let m = s.firstMessage ?? ""
+        if m.hasPrefix("Hello memory agent") || m.hasPrefix("You are a Claude-Mem") { return false }
+        if m.contains("F|D|P|H|V") || m.contains("KALICI DE") { return false }   // brain extraction
+        return true
+    }
+
+    /// Session counts per local day since `since` ("yyyy-MM-dd" → n), for the heatmap.
+    /// Always excludes tool-made sessions so "your activity" means *your* activity, not
+    /// the hundreds of observer/memory runs other tools spawn in the background.
+    public func activityByDay(since: Date) async -> [String: Int] {
+        (try? await store.activityByDay(since: since, excludeTools: true)) ?? [:]
     }
 
     /// All pinned sessions (for the dashboard), regardless of recency.
@@ -208,12 +264,22 @@ public final class IndexCoordinator {
         await reloadProjects()
         await reloadSessions()
         await loadFilterOptions()
-        totalSessionCount = (try? await store.sessionCount()) ?? 0
+        await reloadCount()
+    }
+
+    /// Recompute the headline total, honouring the "only my sessions" filter so the
+    /// sidebar badge and welcome pane match the list's own count.
+    private func reloadCount() async {
+        totalSessionCount = (try? await store.sessionCount(excludeTools: onlyUserSessions)) ?? 0
+        todayCount = (try? await store.todaySessionCount(excludeTools: true)) ?? 0
     }
 
     private func reloadProjects() async {
         let fetched = (try? await store.projects()) ?? []
-        let withPins = fetched.map { project -> Project in
+        // Drop the machine-made observer/memory project folders (e.g. ~/.claude-mem/…)
+        // so the sidebar shows only places the user actually worked.
+        let cleaned = onlyUserSessions ? fetched.filter { !$0.decodedPath.contains(".claude-mem") } : fetched
+        let withPins = cleaned.map { project -> Project in
             var copy = project
             copy.pinned = metaStore.isProjectPinned(project.id)
             return copy
@@ -239,7 +305,8 @@ public final class IndexCoordinator {
             projectId: projectId,
             since: since,
             gitBranch: branchFilter,
-            entrypoint: entrypointFilter
+            entrypoint: entrypointFilter,
+            excludeTools: onlyUserSessions
         )
         var results = overlay((try? await store.search(searchText, filters: filters)) ?? [])
         if let tag = tagFilter {

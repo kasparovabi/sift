@@ -42,6 +42,7 @@ let package = Package(
                 "ClaudeOSCore",
                 "ClaudeOSBrain",
                 .product(name: "SwiftTerm", package: "SwiftTerm"),
+                .product(name: "GRDB", package: "GRDB.swift"),
             ]
         ),
         .target(
@@ -49,7 +50,10 @@ let package = Package(
             dependencies: [
                 "ClaudeOSCore", "ClaudeOSIndex", "ClaudeOSRuntime", "ClaudeOSBrain",
                 .product(name: "KeyboardShortcuts", package: "KeyboardShortcuts"),
-            ]
+            ],
+            // CRT.metal is the phosphor-bloom shader, kept for the layerEffect path once the
+            // Metal Toolchain is installed. Excluded for now so SwiftPM doesn't flag it.
+            exclude: ["Shaders"]
         ),
         .executableTarget(
             name: "ClaudeOSApp",

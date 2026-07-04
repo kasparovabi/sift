@@ -7,12 +7,17 @@ public struct SearchFilters: Sendable, Equatable {
     public var since: Date?
     public var gitBranch: String?
     public var entrypoint: String?
+    /// Drop machine-made sessions (claude-mem observer, "memory agent" runs, our own
+    /// brain extractions) at the SQL level, so the user only ever sees real work.
+    public var excludeTools: Bool
 
-    public init(projectId: String? = nil, since: Date? = nil, gitBranch: String? = nil, entrypoint: String? = nil) {
+    public init(projectId: String? = nil, since: Date? = nil, gitBranch: String? = nil,
+                entrypoint: String? = nil, excludeTools: Bool = false) {
         self.projectId = projectId
         self.since = since
         self.gitBranch = gitBranch
         self.entrypoint = entrypoint
+        self.excludeTools = excludeTools
     }
 }
 
@@ -20,6 +25,19 @@ public struct SearchFilters: Sendable, Equatable {
 /// is a rebuildable cache; the JSONL files are the source of truth.
 public final class IndexStore: Sendable {
     private let dbQueue: DatabaseQueue
+
+    /// SQL predicate (no bound args) matching only user-started sessions — the source-level
+    /// twin of IndexCoordinator.isUserStarted. Shared by search() and sessionCount() so the
+    /// browser, its header count, and the sidebar badge all agree.
+    static let userSessionPredicate = """
+        (session.entrypoint IS NULL OR session.entrypoint NOT LIKE 'sdk-%') AND \
+        (session.cwd IS NULL OR session.cwd NOT LIKE '%.claude-mem%') AND \
+        (session.firstMessage IS NULL OR (\
+        session.firstMessage NOT LIKE 'Hello memory agent%' AND \
+        session.firstMessage NOT LIKE 'You are a Claude-Mem%' AND \
+        session.firstMessage NOT LIKE '%F|D|P|H|V%' AND \
+        session.firstMessage NOT LIKE '%KALICI DE%'))
+        """
 
     public init(path: URL) throws {
         try FileManager.default.createDirectory(
@@ -167,8 +185,40 @@ public final class IndexStore: Sendable {
         }
     }
 
-    public func sessionCount() async throws -> Int {
-        try await dbQueue.read { db in try SessionRecord.fetchCount(db) }
+    public func sessionCount(excludeTools: Bool = false) async throws -> Int {
+        try await dbQueue.read { db in
+            guard excludeTools else { return try SessionRecord.fetchCount(db) }
+            return try Int.fetchOne(db, sql: "SELECT count(*) FROM session WHERE \(Self.userSessionPredicate)") ?? 0
+        }
+    }
+
+    /// Count of sessions last active today (local time), for the sidebar's "Bugün" badge.
+    public func todaySessionCount(excludeTools: Bool = true) async throws -> Int {
+        try await dbQueue.read { db in
+            var sql = "SELECT count(*) FROM session WHERE date(lastActivity, 'localtime') = date('now', 'localtime')"
+            if excludeTools { sql += " AND \(Self.userSessionPredicate)" }
+            return try Int.fetchOne(db, sql: sql) ?? 0
+        }
+    }
+
+    /// Session counts grouped by local calendar day, for the activity heatmap.
+    /// Keys are "yyyy-MM-dd" (local time) → number of sessions last active that day.
+    /// `excludeTools` drops observer/memory/extraction noise so the heatmap, streak, and
+    /// "bugün" counter reflect real work instead of hundreds of machine-made sessions.
+    public func activityByDay(since: Date, excludeTools: Bool = false) async throws -> [String: Int] {
+        try await dbQueue.read { db in
+            var sql = """
+                SELECT date(lastActivity, 'localtime') AS day, count(*) AS n
+                FROM session
+                WHERE lastActivity IS NOT NULL AND lastActivity >= ?
+                """
+            if excludeTools { sql += " AND \(Self.userSessionPredicate)" }
+            sql += " GROUP BY day"
+            let rows = try Row.fetchAll(db, sql: sql, arguments: [since])
+            var out: [String: Int] = [:]
+            for row in rows where row["day"] != nil { out[row["day"]] = row["n"] }
+            return out
+        }
     }
 
     /// True if some indexed sessions predate the full-text column and need a reparse.
@@ -193,6 +243,9 @@ public final class IndexStore: Sendable {
             if let branch = filters.gitBranch { conditions.append("session.gitBranch = ?"); conditionArgs.append(branch) }
             if let entrypoint = filters.entrypoint { conditions.append("session.entrypoint = ?"); conditionArgs.append(entrypoint) }
             if let since = filters.since { conditions.append("session.lastActivity >= ?"); conditionArgs.append(since) }
+            // Hide tool-spawned sessions at the source so the 500-row cap is filled with
+            // real work, not observer/memory/extraction noise (mirrors isUserStarted).
+            if filters.excludeTools { conditions.append(Self.userSessionPredicate) }
 
             if let pattern {
                 // snippet() marks matches with char(1)…char(2) so the UI can highlight them.
@@ -206,11 +259,28 @@ public final class IndexStore: Sendable {
                 args.append(contentsOf: conditionArgs)
                 sql += " ORDER BY bm25(session_ft, 5.0, 2.0, 1.0) LIMIT 500"
                 let rows = try Row.fetchAll(db, sql: sql, arguments: StatementArguments(args))
-                return try rows.map { row in
+                var results = try rows.map { row -> SessionSummary in
                     var summary = try SessionRecord(row: row).summary
                     summary.snippet = row["snippet"]
                     return summary
                 }
+                // Also match by folder/path, so searching a project name ("maarif") surfaces
+                // the sessions you ran there even when that word never appears in the chat.
+                // These follow the full-text hits (which are the more relevant matches).
+                if results.count < 500 {
+                    let seen = Set(results.map(\.sessionId))
+                    var pathSQL = "SELECT session.* FROM session WHERE session.cwd LIKE ?"
+                    var pathArgs: [DatabaseValueConvertible] = ["%\(trimmed)%"]
+                    for condition in conditions { pathSQL += " AND \(condition)" }
+                    pathArgs.append(contentsOf: conditionArgs)
+                    pathSQL += " ORDER BY session.lastActivity DESC LIMIT 500"
+                    let pathRows = try SessionRecord.fetchAll(db, sql: pathSQL, arguments: StatementArguments(pathArgs))
+                    for record in pathRows where !seen.contains(record.summary.sessionId) {
+                        results.append(record.summary)
+                        if results.count >= 500 { break }
+                    }
+                }
+                return results
             } else {
                 var sql = "SELECT session.* FROM session"
                 if !conditions.isEmpty { sql += " WHERE " + conditions.joined(separator: " AND ") }

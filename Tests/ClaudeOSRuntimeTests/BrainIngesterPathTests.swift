@@ -43,4 +43,14 @@ final class BrainIngesterPathTests: XCTestCase {
         try content.write(to: f, atomically: true, encoding: .utf8)
         XCTAssertEqual(BrainIngester.firstLineCwd(f.path), "/first/line")
     }
+
+    // Machine-generated sessions (our extractor + other memory tools) are skipped;
+    // real human sessions are ingested. This is what keeps the background `claude -p`
+    // load from exploding when other tools churn the sessions folder.
+    func testIsNoiseTranscriptSkipsMachineSessions() {
+        XCTAssertTrue(BrainIngester.isNoiseTranscript("… transkriptinden KALICI DEĞERLİ bilgi çıkar …"))
+        XCTAssertTrue(BrainIngester.isNoiseTranscript("You are a Claude-Mem, a specialized observer tool"))
+        XCTAssertTrue(BrainIngester.isNoiseTranscript("Hello memory agent, you are continuing to observe the primary Claude session."))
+        XCTAssertFalse(BrainIngester.isNoiseTranscript("kullanıcı: bu fonksiyonu refactor edelim"))
+    }
 }

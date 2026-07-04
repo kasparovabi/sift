@@ -29,6 +29,15 @@ public final class BrainViewModel {
         clampSelection()
     }
 
+    /// Manually add a knowledge atom (off the main actor), then refresh.
+    public func add(text: String, type: AtomType, importance: Int) async {
+        let svc = service
+        _ = try? await Task.detached {
+            try svc.remember(text: text, type: type, importance: importance, proj: nil, src: "manual")
+        }.value
+        await reload()
+    }
+
     public func delete(id: String) async {
         try? await service.store.deleteAtom(id: id)
         await reload()
@@ -52,6 +61,13 @@ public final class BrainViewModel {
     }
 
     public func selectedAtom() -> Atom? { atoms.first { $0.id == selectedAtomId } }
+
+    /// Entities linked to an atom (resolved against the loaded entity list), for the
+    /// detail pane's connection chips.
+    public func entities(forAtom id: String) -> [Entity] {
+        let ids = Set((try? service.store.entityIds(forAtom: id)) ?? [])
+        return entities.filter { ids.contains($0.id) }
+    }
 
     /// Drop the list selection if it no longer points at a visible atom
     /// (after delete/forget/reload/search the selected row may be gone).

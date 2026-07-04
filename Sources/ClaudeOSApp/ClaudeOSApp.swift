@@ -14,6 +14,7 @@ struct ClaudeOSApp: App {
     @State private var quickOpen: QuickOpenController
     @State private var windows: DesktopWindowManager
     @State private var brainVM: BrainViewModel
+    @State private var toasts: ToastCenter
 
     init() {
         // Always open the desktop fresh; don't restore a previous "no windows" state.
@@ -64,6 +65,14 @@ struct ClaudeOSApp: App {
         // Auto-extract knowledge from finished sessions in the background.
         let ingester = BrainIngester(service: brain)
         runtime.onSessionFinished = { cwd, sid in ingester.ingestFinished(cwd: cwd, claudeSessionId: sid) }
+        // A passed loop writes a one-line outcome atom so finished work compounds into the
+        // project digest the next run sees. Off-main: remember() embeds + writes SQLite.
+        runtime.onLoopArtifact = { cwd, title, summary, src in
+            let text = "Tamamlanan döngü '\(title)': \(summary)"
+            DispatchQueue.global(qos: .utility).async {
+                _ = try? brain.remember(text: text, type: .howto, importance: 5, proj: cwd, src: src)
+            }
+        }
 
         // Periodic + on-launch Forgetter sweep (drops low-importance, aged, never-retrieved atoms).
         Task.detached(priority: .utility) { _ = try? await brain.forget() }
@@ -89,6 +98,7 @@ struct ClaudeOSApp: App {
         _quickOpen = State(initialValue: quickOpen)
         _windows = State(initialValue: windows)
         _brainVM = State(initialValue: BrainViewModel(service: brain))
+        _toasts = State(initialValue: ToastCenter())
         quickOpen.registerHotkey()
         quickOpen.openSessionWindow = {
             NSApp.activate(ignoringOtherApps: true)
@@ -105,6 +115,7 @@ struct ClaudeOSApp: App {
                 .environment(quickOpen)
                 .environment(windows)
                 .environment(brainVM)
+                .environment(toasts)
                 .frame(minWidth: 900, minHeight: 600)
         }
         .windowStyle(.hiddenTitleBar)

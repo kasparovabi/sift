@@ -15,34 +15,46 @@ struct SessionEditSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Oturumu düzenle").font(.headline)
+            Text("Oturumu düzenle")
+                .font(Wasteland.font(15, weight: .bold))
+                .foregroundStyle(Wasteland.accent)
 
             VStack(alignment: .leading, spacing: 4) {
-                Text("Ad").font(.caption).foregroundStyle(.secondary)
+                Text("Ad")
+                    .font(Wasteland.font(11))
+                    .foregroundStyle(Wasteland.textDim)
                 TextField(session.title ?? "Oturum adı", text: $name)
                     .textFieldStyle(.roundedBorder)
+                    .font(Wasteland.font(12))
+                    .foregroundStyle(Wasteland.textPrimary)
                     .onSubmit(save)
                 Text("Boş bırakırsan otomatik başlık kullanılır.")
-                    .font(.caption2).foregroundStyle(.secondary)
+                    .font(Wasteland.font(10))
+                    .foregroundStyle(Wasteland.textDim)
             }
 
             VStack(alignment: .leading, spacing: 6) {
-                Text("Etiketler").font(.caption).foregroundStyle(.secondary)
+                Text("Etiketler")
+                    .font(Wasteland.font(11))
+                    .foregroundStyle(Wasteland.textDim)
                 if !tags.isEmpty {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 6) {
                             ForEach(tags, id: \.self) { tag in
                                 HStack(spacing: 4) {
-                                    Text(tag).font(.caption)
+                                    Text(tag)
+                                        .font(Wasteland.font(11))
+                                        .foregroundStyle(Wasteland.accent)
                                     Button { tags.removeAll { $0 == tag } } label: {
                                         Image(systemName: "xmark.circle.fill").font(.caption2)
                                     }
                                     .buttonStyle(.plain)
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(Wasteland.textDim)
                                 }
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 3)
-                                .background(Color.accentColor.opacity(0.15), in: Capsule())
+                                .background(Wasteland.accent.opacity(0.15), in: Capsule())
+                                .overlay(Capsule().strokeBorder(Wasteland.border, lineWidth: 1))
                             }
                         }
                     }
@@ -50,8 +62,11 @@ struct SessionEditSheet: View {
                 HStack {
                     TextField("Etiket ekle", text: $newTag)
                         .textFieldStyle(.roundedBorder)
+                        .font(Wasteland.font(12))
+                        .foregroundStyle(Wasteland.textPrimary)
                         .onSubmit(addTag)
                     Button("Ekle", action: addTag)
+                        .tint(Wasteland.accent)
                         .disabled(newTag.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
@@ -61,13 +76,16 @@ struct SessionEditSheet: View {
             HStack {
                 Spacer()
                 Button("İptal") { dismiss() }
+                    .tint(Wasteland.textDim)
                 Button("Kaydet", action: save)
                     .keyboardShortcut(.return)
                     .buttonStyle(.borderedProminent)
+                    .tint(Wasteland.accent)
             }
         }
         .padding(18)
         .frame(width: 430, height: 340)
+        .background(Wasteland.base)
         .onAppear {
             let meta = index.meta(for: session.sessionId)
             name = meta.name ?? ""
