@@ -3,13 +3,13 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleName</key>
-    <string>Claude OS</string>
+    <string>Sift</string>
     <key>CFBundleDisplayName</key>
-    <string>Claude OS</string>
+    <string>Sift</string>
     <key>CFBundleExecutable</key>
-    <string>ClaudeOS</string>
+    <string>Sift</string>
     <key>CFBundleIdentifier</key>
-    <string>com.claudeos.app</string>
+    <string>io.github.kasparovabi.sift</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>CFBundlePackageType</key>

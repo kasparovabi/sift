@@ -1,0 +1,59 @@
+name: Bug report
+description: Something in Sift does not work
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Sift reads a directory layout that belongs to Claude Code, so the Claude Code
+        version matters as much as the macOS one. Please fill both in.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, what you got instead.
+    validations:
+      required: true
+
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+      placeholder: "15.2"
+    validations:
+      required: true
+
+  - type: input
+    id: claude-code
+    attributes:
+      label: Claude Code version
+      description: Output of `claude --version`.
+    validations:
+      required: true
+
+  - type: input
+    id: sift
+    attributes:
+      label: Sift commit
+      description: Output of `git rev-parse --short HEAD` in your clone.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: extraction
+    attributes:
+      label: Is knowledge extraction turned on?
+      description: Settings → Knowledge. It is off unless you switched it on.
+      options:
+        - "No"
+        - "Yes"
+        - "Not sure"
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Console output, screenshots, roughly how many sessions you have.

@@ -1,7 +1,7 @@
 import AppKit
 
 // Renders a 1024×1024 app icon: dark gradient rounded square with a terminal
-// prompt chevron and an accent underscore cursor. Output: /tmp/claudeos_icon_1024.png
+// prompt chevron and an accent underscore cursor. Output: /tmp/sift_icon_1024.png
 
 let px = 1024
 let size = CGFloat(px)
@@ -50,6 +50,6 @@ underscore.fill()
 NSGraphicsContext.restoreGraphicsState()
 
 guard let png = rep.representation(using: .png, properties: [:]) else { fatalError("png") }
-let url = URL(fileURLWithPath: "/tmp/claudeos_icon_1024.png")
+let url = URL(fileURLWithPath: "/tmp/sift_icon_1024.png")
 try! png.write(to: url)
 print("wrote \(url.path) (\(rep.pixelsWide)x\(rep.pixelsHigh))")

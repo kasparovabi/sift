@@ -2,16 +2,16 @@
 # Build a release, assemble + sign the bundle, and install to /Applications.
 #
 # Signing: defaults to ad-hoc (runs locally, no keychain prompt). For a stable
-# identity or distribution, export CLAUDEOS_SIGN_IDENTITY="Developer ID Application: …"
+# identity or distribution, export SIFT_SIGN_IDENTITY="Developer ID Application: …"
 # (or an Apple Development identity) and re-run; you may need to approve a keychain
 # prompt the first time. Notarization additionally requires a Developer ID cert.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-APP="$ROOT/ClaudeOS.app"
-DEST="/Applications/Claude OS.app"
+APP="$ROOT/Sift.app"
+DEST="/Applications/Sift.app"
 
-IDENTITY="${CLAUDEOS_SIGN_IDENTITY:-}"
+IDENTITY="${SIFT_SIGN_IDENTITY:-}"
 if [ -z "$IDENTITY" ]; then
     IDENTITY=$(security find-identity -v -p codesigning | awk -F'"' '/Developer ID Application/{print $2; exit}')
 fi

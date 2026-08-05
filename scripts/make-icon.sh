@@ -3,8 +3,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-MASTER="/tmp/claudeos_icon_1024.png"
-ICONSET="/tmp/ClaudeOS.iconset"
+MASTER="/tmp/sift_icon_1024.png"
+ICONSET="/tmp/Sift.iconset"
 OUT="$ROOT/packaging/AppIcon.icns"
 
 swift "$ROOT/scripts/icon.swift"

@@ -2,74 +2,61 @@
 import PackageDescription
 
 let package = Package(
-    name: "ClaudeOS",
+    name: "Sift",
     platforms: [.macOS(.v14)],
     products: [
-        .library(name: "ClaudeOSCore", targets: ["ClaudeOSCore"]),
-        .library(name: "ClaudeOSBrain", targets: ["ClaudeOSBrain"]),
-        .executable(name: "claudeos", targets: ["ClaudeOSApp"]),
-        .executable(name: "claudeos-spike", targets: ["ClaudeOSSpike"]),
-        .executable(name: "claudeos-brain-mcp", targets: ["ClaudeOSBrainMCP"]),
+        .library(name: "SiftCore", targets: ["SiftCore"]),
+        .library(name: "SiftBrain", targets: ["SiftBrain"]),
+        .executable(name: "sift", targets: ["SiftApp"]),
+        .executable(name: "sift-brain-mcp", targets: ["SiftBrainMCP"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/migueldeicaza/SwiftTerm.git", from: "1.13.0"),
         .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.0.0"),
         .package(url: "https://github.com/sindresorhus/KeyboardShortcuts", from: "1.9.0"),
     ],
     targets: [
-        .target(name: "ClaudeOSCore"),
+        .target(name: "SiftCore"),
         .target(
-            name: "ClaudeOSIndex",
+            name: "SiftIndex",
             dependencies: [
-                "ClaudeOSCore",
+                "SiftCore",
                 .product(name: "GRDB", package: "GRDB.swift"),
             ]
         ),
         .target(
-            name: "ClaudeOSBrain",
+            name: "SiftBrain",
             dependencies: [
-                "ClaudeOSCore",
+                "SiftCore",
                 .product(name: "GRDB", package: "GRDB.swift"),
             ]
         ),
         .executableTarget(
-            name: "ClaudeOSBrainMCP",
-            dependencies: ["ClaudeOSBrain"]
+            name: "SiftBrainMCP",
+            dependencies: ["SiftBrain"]
         ),
         .target(
-            name: "ClaudeOSRuntime",
+            name: "SiftRuntime",
             dependencies: [
-                "ClaudeOSCore",
-                "ClaudeOSBrain",
-                .product(name: "SwiftTerm", package: "SwiftTerm"),
+                "SiftCore",
+                "SiftBrain",
                 .product(name: "GRDB", package: "GRDB.swift"),
             ]
         ),
         .target(
-            name: "ClaudeOSUI",
+            name: "SiftViews",
             dependencies: [
-                "ClaudeOSCore", "ClaudeOSIndex", "ClaudeOSRuntime", "ClaudeOSBrain",
+                "SiftCore", "SiftIndex", "SiftRuntime", "SiftBrain",
                 .product(name: "KeyboardShortcuts", package: "KeyboardShortcuts"),
-            ],
-            // CRT.metal is the phosphor-bloom shader, kept for the layerEffect path once the
-            // Metal Toolchain is installed. Excluded for now so SwiftPM doesn't flag it.
-            exclude: ["Shaders"]
-        ),
-        .executableTarget(
-            name: "ClaudeOSApp",
-            dependencies: ["ClaudeOSCore", "ClaudeOSIndex", "ClaudeOSRuntime", "ClaudeOSUI"]
-        ),
-        .executableTarget(
-            name: "ClaudeOSSpike",
-            dependencies: [
-                "ClaudeOSCore",
-                .product(name: "SwiftTerm", package: "SwiftTerm"),
             ]
         ),
-        .testTarget(name: "ClaudeOSCoreTests", dependencies: ["ClaudeOSCore"]),
-        .testTarget(name: "ClaudeOSIndexTests", dependencies: ["ClaudeOSIndex", "ClaudeOSCore"]),
-        .testTarget(name: "ClaudeOSBrainTests", dependencies: ["ClaudeOSBrain"]),
-        .testTarget(name: "ClaudeOSRuntimeTests", dependencies: ["ClaudeOSRuntime", "ClaudeOSBrain"]),
-        .testTarget(name: "ClaudeOSUITests", dependencies: ["ClaudeOSUI", "ClaudeOSBrain"]),
+        .executableTarget(
+            name: "SiftApp",
+            dependencies: ["SiftCore", "SiftIndex", "SiftRuntime", "SiftViews"]
+        ),
+        .testTarget(name: "SiftCoreTests", dependencies: ["SiftCore"]),
+        .testTarget(name: "SiftIndexTests", dependencies: ["SiftIndex", "SiftCore", "SiftBrain"]),
+        .testTarget(name: "SiftBrainTests", dependencies: ["SiftBrain"]),
+        .testTarget(name: "SiftRuntimeTests", dependencies: ["SiftRuntime", "SiftBrain"]),
+        .testTarget(name: "SiftViewsTests", dependencies: ["SiftViews", "SiftBrain"]),
     ]
 )
