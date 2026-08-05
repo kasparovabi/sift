@@ -20,7 +20,7 @@ struct SessionEditSheet: View {
                 .foregroundStyle(Palette.accent)
 
             VStack(alignment: .leading, spacing: 4) {
-                Text("Ad")
+                Text("Name")
                     .font(Palette.font(11))
                     .foregroundStyle(Palette.textDim)
                 TextField(session.title ?? "Session name", text: $name)

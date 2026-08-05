@@ -13,7 +13,7 @@ struct SessionListView: View {
     @State private var sortOrder: SortOrder = .recency
     @State private var collapsed: Set<String> = []   // collapsed group ids (date sections you've folded)
 
-    enum SortOrder: String, CaseIterable { case recency = "Last activity", name = "Ad", messages = "Messages" }
+    enum SortOrder: String, CaseIterable { case recency = "Last activity", name = "Name", messages = "Messages" }
 
     var body: some View {
         @Bindable var index = index
@@ -149,7 +149,7 @@ struct SessionListView: View {
                 }
             }
             if !index.allTags.isEmpty {
-                Picker("Etiket", selection: $index.tagFilter) {
+                Picker("Tag", selection: $index.tagFilter) {
                     Text("All").tag(String?.none)
                     ForEach(index.allTags, id: \.self) { tag in
                         Text(tag).tag(String?.some(tag))

@@ -53,9 +53,7 @@ public final class IndexStore: Sendable {
     }
 
     public static func defaultURL() -> URL {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support")
-        return base.appendingPathComponent("Sift/index.sqlite")
+        AppPaths.supportDirectory.appendingPathComponent("index.sqlite")
     }
 
     private static let migrator: DatabaseMigrator = {

@@ -99,8 +99,7 @@ public final class IndexCoordinator {
 
     public init(store: IndexStore, projectsRoot: URL? = nil) {
         self.store = store
-        self.projectsRoot = projectsRoot
-            ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/projects")
+        self.projectsRoot = projectsRoot ?? AppPaths.projectsRoot
     }
 
     public func initialLoad() async {

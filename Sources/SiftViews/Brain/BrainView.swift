@@ -92,11 +92,11 @@ public struct BrainView: View {
             HStack(spacing: 6) {
                 chip(nil, "All", Palette.textDim)
                 chip(.fact, "Fact", Palette.cyan)
-                chip(.decision, "Karar", Palette.acid)
-                chip(.pref, "Tercih", Palette.magenta)
+                chip(.decision, "Decision", Palette.acid)
+                chip(.pref, "Preference", Palette.magenta)
                 chip(.entity, "Entity", Palette.accent)
                 chip(.howto, "How", Palette.cyan)
-                chip(.event, "Olay", Palette.magenta)
+                chip(.event, "Event", Palette.magenta)
             }
             .padding(.horizontal, 10).padding(.vertical, 6)
         }
@@ -237,9 +237,9 @@ public struct BrainView: View {
                 }
             } label: {
                 if let n = forgottenCount {
-                    Label("\(n) silindi", systemImage: "trash").foregroundStyle(Palette.acid)
+                    Label("\(n) forgotten", systemImage: "trash").foregroundStyle(Palette.acid)
                 } else {
-                    Label("Unut", systemImage: "trash")
+                    Label("Forget", systemImage: "trash")
                 }
             }
             .buttonStyle(.bordered)
@@ -356,7 +356,7 @@ private struct AtomDetail: View {
                 Divider()
 
                 VStack(alignment: .leading, spacing: 10) {
-                    LabeledContent("Tip") {
+                    LabeledContent("Type") {
                         Text(typeLabel(atom.t))
                             .foregroundStyle(typeColor(atom.t))
                     }
@@ -469,13 +469,13 @@ private struct AddAtomSheet: View {
                 .frame(height: 84)
                 .padding(4)
                 .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(Palette.border))
-            Picker("Tip", selection: $type) {
+            Picker("Type", selection: $type) {
                 Text("Fact").tag(AtomType.fact)
-                Text("Karar").tag(AtomType.decision)
-                Text("Tercih").tag(AtomType.pref)
+                Text("Decision").tag(AtomType.decision)
+                Text("Preference").tag(AtomType.pref)
                 Text("Entity").tag(AtomType.entity)
                 Text("How").tag(AtomType.howto)
-                Text("Olay").tag(AtomType.event)
+                Text("Event").tag(AtomType.event)
             }
             Stepper("Weight: \(importance)", value: $importance, in: 1...10)
             HStack {

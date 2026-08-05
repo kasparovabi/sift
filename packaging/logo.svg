@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Sift">
+  <defs>
+    <linearGradient id="plate" x1="0" y1="0" x2="0" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#222b39"/>
+      <stop offset="1" stop-color="#0a0e15"/>
+    </linearGradient>
+    <linearGradient id="mesh" x1="96" y1="0" x2="416" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#55657a"/>
+      <stop offset="0.5" stop-color="#aebed4"/>
+      <stop offset="1" stop-color="#55657a"/>
+    </linearGradient>
+    <radialGradient id="halo" cx="256" cy="212" r="118" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#c6ff2e" stop-opacity="0.55"/>
+      <stop offset="0.45" stop-color="#c6ff2e" stop-opacity="0.14"/>
+      <stop offset="1" stop-color="#c6ff2e" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="rounded">
+      <rect width="512" height="512" rx="115" ry="115"/>
+    </clipPath>
+  </defs>
+
+  <g clip-path="url(#rounded)">
+    <rect width="512" height="512" fill="url(#plate)"/>
+    <circle cx="256" cy="212" r="118" fill="url(#halo)"/>
+
+    <!-- Going in: many, undifferentiated, all the same grey. -->
+    <g fill="#8e9db1">
+      <circle cx="150" cy="96" r="11" opacity="0.45"/>
+      <circle cx="214" cy="72" r="13" opacity="0.7"/>
+      <circle cx="292" cy="86" r="11" opacity="0.55"/>
+      <circle cx="356" cy="68" r="12" opacity="0.4"/>
+      <circle cx="180" cy="152" r="12" opacity="0.6"/>
+      <circle cx="330" cy="146" r="13" opacity="0.5"/>
+    </g>
+
+    <!-- Kept: the one you were looking for, resting on the mesh. -->
+    <circle cx="256" cy="212" r="44" fill="#c6ff2e"/>
+    <circle cx="256" cy="212" r="44" fill="none" stroke="#f0ffc4" stroke-width="5" opacity="0.85"/>
+
+    <!-- The sieve. -->
+    <g stroke-linecap="round" fill="none">
+      <path d="M96 286 H416" stroke="url(#mesh)" stroke-width="26"/>
+      <g stroke="#0a0e15" stroke-width="13" opacity="0.85">
+        <path d="M143 286 V286"/>
+        <path d="M199 286 V286"/>
+        <path d="M256 286 V286"/>
+        <path d="M313 286 V286"/>
+        <path d="M369 286 V286"/>
+      </g>
+    </g>
+
+    <!-- Falling through: discarded, fading out. -->
+    <g fill="#6d7d92">
+      <circle cx="168" cy="360" r="10" opacity="0.42"/>
+      <circle cx="256" cy="398" r="9" opacity="0.28"/>
+      <circle cx="344" cy="356" r="10" opacity="0.36"/>
+      <circle cx="206" cy="436" r="8" opacity="0.18"/>
+      <circle cx="312" cy="440" r="8" opacity="0.16"/>
+    </g>
+  </g>
+</svg>

@@ -255,11 +255,17 @@ private struct WelcomePane: View {
         }
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .task {
-            let since = Calendar.current.date(byAdding: .day, value: -14, to: Date()) ?? Date()
-            activity = await index.activityByDay(since: since)
-            recents = await index.recentUserSessions(limit: 4)
-        }
+        .task { await loadOverview() }
+        // The very first launch indexes the transcripts *after* this view appears, so a
+        // one-shot load leaves a new user looking at an empty heatmap and "0 today" over a
+        // library that is actually full. Reload whenever the indexed total moves.
+        .task(id: index.totalSessionCount) { await loadOverview() }
+    }
+
+    private func loadOverview() async {
+        let since = Calendar.current.date(byAdding: .day, value: -14, to: Date()) ?? Date()
+        activity = await index.activityByDay(since: since)
+        recents = await index.recentUserSessions(limit: 4)
     }
 
     /// Compact one-tap recent-session row (project dot + title + relative time).

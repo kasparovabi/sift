@@ -64,8 +64,7 @@ struct SiftApp: App {
         // that fails (first-launch permissions, sandboxing, etc.) fall back to a
         // temp-directory path so BrainViewModel is always non-nil and BrainView's
         // @Environment(BrainViewModel.self) never crashes at runtime.
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Sift", isDirectory: true)
+        let appSupport = AppPaths.supportDirectory
         try? FileManager.default.createDirectory(at: appSupport, withIntermediateDirectories: true)
         let brainDBURL = appSupport.appendingPathComponent("brain.sqlite")
         let brainDBPath = brainDBURL.path

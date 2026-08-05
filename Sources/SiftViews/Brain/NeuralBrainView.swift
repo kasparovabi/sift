@@ -16,6 +16,15 @@ struct NeuralBrainView: View {
     @State private var vel: [String: CGVector] = [:]
     @State private var engine: GraphLayoutEngine?
     @State private var laidOutFor: CGSize = .zero
+    /// Node count the layout was built for. Keying only on view size meant a graph whose
+    /// data arrived after the view had already been laid out at that size never re-laid out,
+    /// so the canvas stayed empty on a cold open.
+    @State private var laidOutCount = 0
+    /// Bumped on every (re)layout. TimelineView keeps the Canvas closure it was first built
+    /// with, so a layout finishing after the timeline had started kept drawing the empty
+    /// `pos` it captured: 140 nodes laid out, an empty canvas on screen. Keying the timeline
+    /// on this rebuilds it against the current positions.
+    @State private var layoutGeneration = 0
     @State private var viewSize: CGSize = .zero
     @State private var simulating = false
     @State private var alpha: Double = 0   // sim temperature: hot while dragging, decays to rest
@@ -64,6 +73,7 @@ struct NeuralBrainView: View {
                                    time: timeline.date.timeIntervalSinceReferenceDate)
                         }
                     }
+                        .id(layoutGeneration)
                         .gesture(dragGesture(in: geo.size))
                         .simultaneousGesture(
                             MagnificationGesture()
@@ -112,7 +122,7 @@ struct NeuralBrainView: View {
             legendRow("project", "project")
             legendRow("file", "file")
             legendRow("tool", "tool / lib")
-            legendRow("concept", "kavram")
+            legendRow("concept", "concept")
         }
         .padding(8)
         .siftPanel(cornerRadius: 8)
@@ -407,8 +417,11 @@ struct NeuralBrainView: View {
     }
 
     private func ensureLayout(_ size: CGSize) {
-        guard size.width > 0, size.height > 0, size != laidOutFor, !entities.isEmpty else { return }
+        guard size.width > 0, size.height > 0, !entities.isEmpty,
+              size != laidOutFor || entities.count != laidOutCount else { return }
         laidOutFor = size
+        laidOutCount = entities.count
+        layoutGeneration += 1
         pan = .zero; zoom = 1; baseZoom = 1
         var radii: [String: CGFloat] = [:]
         let deg = degree

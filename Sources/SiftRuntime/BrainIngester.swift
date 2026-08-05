@@ -16,7 +16,7 @@ public final class BrainIngester: @unchecked Sendable {
     public init(service: BrainService,
                 claudePath: String = ClaudeBinary.resolve().path,
                 env: [String: String] = EnvironmentResolver.resolved(),
-                projectsRoot: URL = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".claude/projects"),
+                projectsRoot: URL = AppPaths.projectsRoot,
                 cap: Int = 60_000) {
         self.service = service
         self.claudePath = claudePath

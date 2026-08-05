@@ -1,6 +1,16 @@
-# Sift
+<p align="center">
+  <img src="docs/media/logo.png" width="128" alt="Sift">
+</p>
 
-**Search everything you have ever done in Claude Code.**
+<h1 align="center">Sift</h1>
+
+<p align="center"><strong>Search everything you have ever done in Claude Code.</strong></p>
+
+<p align="center">
+  <img src="https://github.com/kasparovabi/sift/actions/workflows/ci.yml/badge.svg" alt="CI">
+  <img src="https://img.shields.io/badge/macOS-14%2B-black" alt="macOS 14+">
+  <img src="https://img.shields.io/badge/license-MIT-black" alt="MIT">
+</p>
 
 Claude Code writes every session to a transcript on your Mac. After a few months that is
 thousands of files you cannot search, so the work is effectively gone: you remember solving
@@ -8,6 +18,13 @@ something and have no way back to it.
 
 Sift indexes those transcripts and makes them searchable in milliseconds. Find the session,
 read it, and pick it back up in your own terminal.
+
+<p align="center">
+  <img src="docs/media/knowledge-graph.gif" width="680" alt="The knowledge graph: entities from past sessions, linked, with signals travelling along the links">
+</p>
+
+<p align="center"><em>The knowledge graph, built from what your sessions actually decided.
+Optional, and off until you turn it on.</em></p>
 
 Search, resume, quick tasks, scheduled tasks and loops all run against local files and a
 local SQLite index. One optional feature, knowledge extraction, does send transcript text
@@ -73,8 +90,34 @@ Five designs in Settings → Appearance, switched live:
 | Paper | Light and warm, serif, for reading long transcripts. |
 | Terminal | Phosphor green on near-black, monospaced, with the CRT glow Sift started out with. |
 
+<p align="center">
+  <img src="docs/media/library-terminal.png" width="850" alt="The library in the Terminal theme">
+  <br><em>Terminal</em>
+</p>
+
+<p align="center">
+  <img src="docs/media/library-paper.png" width="850" alt="The library in the Paper theme">
+  <br><em>Paper</em>
+</p>
+
+<p align="center">
+  <img src="docs/media/library-graphite.png" width="850" alt="The library in the Graphite theme">
+  <br><em>Graphite</em>
+</p>
+
 Views read named tokens rather than fixed colours, so a new theme is one value in
 `Sources/SiftViews/Theme/SiftTheme.swift` and it appears in the picker on its own.
+
+Every screenshot here is generated data, not anyone's real sessions. `scripts/demo-data.py`
+writes a throwaway transcript tree and knowledge graph, and `SIFT_PROJECTS_ROOT` /
+`SIFT_SUPPORT_DIR` point a build at it:
+
+```sh
+python3 scripts/demo-data.py /tmp/sift-demo/projects
+SIFT_PROJECTS_ROOT=/tmp/sift-demo/projects SIFT_SUPPORT_DIR=/tmp/sift-demo/support \
+  /Applications/Sift.app/Contents/MacOS/Sift      # quit once it has indexed
+python3 scripts/demo-data.py --brain-only /tmp/sift-demo/support
+```
 
 ---
 
