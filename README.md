@@ -1,10 +1,6 @@
 <p align="center">
-  <img src="docs/media/logo.png" width="128" alt="Sift">
+  <img src="docs/media/banner.png" alt="Sift — search everything you have ever done in Claude Code">
 </p>
-
-<h1 align="center">Sift</h1>
-
-<p align="center"><strong>Search everything you have ever done in Claude Code.</strong></p>
 
 <p align="center">
   <img src="https://github.com/kasparovabi/sift/actions/workflows/ci.yml/badge.svg" alt="CI">
@@ -20,11 +16,11 @@ Sift indexes those transcripts and makes them searchable in milliseconds. Find t
 read it, and pick it back up in your own terminal.
 
 <p align="center">
-  <img src="docs/media/knowledge-graph.gif" width="680" alt="The knowledge graph: entities from past sessions, linked, with signals travelling along the links">
+  <img src="docs/media/tour.gif" width="760" alt="Sift: browsing the library, searching, the knowledge graph, and a session opened — shown across four themes">
 </p>
 
-<p align="center"><em>The knowledge graph, built from what your sessions actually decided.
-Optional, and off until you turn it on.</em></p>
+<p align="center"><em>The library, a search, the knowledge graph, and a session opened,
+in four of the five themes.</em></p>
 
 Search, resume, quick tasks, scheduled tasks and loops all run against local files and a
 local SQLite index. One optional feature, knowledge extraction, does send transcript text
@@ -90,25 +86,10 @@ Five designs in Settings → Appearance, switched live:
 | Paper | Light and warm, serif, for reading long transcripts. |
 | Terminal | Phosphor green on near-black, monospaced, with the CRT glow Sift started out with. |
 
-<p align="center">
-  <img src="docs/media/library-terminal.png" width="850" alt="The library in the Terminal theme">
-  <br><em>Terminal</em>
-</p>
-
-<p align="center">
-  <img src="docs/media/library-paper.png" width="850" alt="The library in the Paper theme">
-  <br><em>Paper</em>
-</p>
-
-<p align="center">
-  <img src="docs/media/library-graphite.png" width="850" alt="The library in the Graphite theme">
-  <br><em>Graphite</em>
-</p>
-
 Views read named tokens rather than fixed colours, so a new theme is one value in
 `Sources/SiftViews/Theme/SiftTheme.swift` and it appears in the picker on its own.
 
-Every screenshot here is generated data, not anyone's real sessions. `scripts/demo-data.py`
+Everything shown above is generated data, not anyone's real sessions. `scripts/demo-data.py`
 writes a throwaway transcript tree and knowledge graph, and `SIFT_PROJECTS_ROOT` /
 `SIFT_SUPPORT_DIR` point a build at it:
 
@@ -118,6 +99,9 @@ SIFT_PROJECTS_ROOT=/tmp/sift-demo/projects SIFT_SUPPORT_DIR=/tmp/sift-demo/suppo
   /Applications/Sift.app/Contents/MacOS/Sift      # quit once it has indexed
 python3 scripts/demo-data.py --brain-only /tmp/sift-demo/support
 ```
+
+`scripts/record-tour.sh` is what recorded the animation, and `docs/banner.html` is the
+WebGPU shader the header image was rendered from: open it, and it draws live.
 
 ---
 

@@ -1,0 +1,181 @@
+<meta charset="utf-8">
+<title>Sift banner</title>
+<style>
+  html, body { margin: 0; background: #05070a; }
+  canvas { display: block; width: 1280px; height: 400px; }
+  #out { position: absolute; left: 0; top: 420px; }
+</style>
+<canvas id="gpu" width="2560" height="800"></canvas>
+<canvas id="out" width="2560" height="800"></canvas>
+<script type="module">
+const W = 2560, H = 800;
+const status = { ok: false, error: null };
+window.__banner = status;
+
+const WGSL = /* wgsl */`
+struct U { time: f32, w: f32, h: f32, pad: f32 };
+@group(0) @binding(0) var<uniform> u: U;
+
+fn h11(x: f32) -> f32 { return fract(sin(x * 127.1) * 43758.5453); }
+fn h21(p: vec2<f32>) -> f32 { return fract(sin(dot(p, vec2<f32>(127.1, 311.7))) * 43758.5453); }
+
+// One row of "transcript": a ragged run of ink and gaps, ending short like a
+// paragraph does. Returns ink coverage in 0..1 for this x.
+fn rowInk(x: f32, row: f32, density: f32) -> f32 {
+  let lineEnd = 0.30 + 0.68 * h11(row * 3.13 + 5.0);      // ragged right edge
+  if (x > lineEnd) { return 0.0; }
+  let indent = 0.02 * h11(row * 7.7);
+  if (x < indent) { return 0.0; }
+  // Word widths vary per row, so the rows read as prose rather than a barcode.
+  let d = density * (0.72 + 0.55 * h11(row * 2.9 + 11.0));
+  let cell = floor(x * d + row * 17.0);
+  let w = h11(cell);
+  let ink = step(0.30, w);                                 // word vs space
+  let f = fract(x * d + row * 17.0);
+  let edge = smoothstep(0.0, 0.12, f) * smoothstep(1.0, 0.88, f);
+  return ink * edge;
+}
+
+@vertex fn vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  var p = array<vec2<f32>, 3>(vec2(-1.0, -3.0), vec2(-1.0, 1.0), vec2(3.0, 1.0));
+  return vec4<f32>(p[i], 0.0, 1.0);
+}
+
+@fragment fn fs(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
+  let uv = vec2<f32>(frag.x / u.w, frag.y / u.h);
+
+  var col = vec3<f32>(0.020, 0.026, 0.036);
+  col += vec3<f32>(0.012, 0.020, 0.034) * (1.0 - uv.y) * 0.8;
+
+  // The corpus: many rows of text scrolling slowly upward.
+  let rows = 34.0;
+  let scroll = u.time * 0.55;
+  let ry = uv.y * rows + scroll;
+  let row = floor(ry);
+  let inRow = fract(ry);
+
+  // Text sits on the upper part of each row band, leaving leading below it.
+  let glyph = smoothstep(0.06, 0.16, inRow) * smoothstep(0.62, 0.50, inRow);
+
+  // Rows run the full width; the left is dimmed rather than cut, so the wordmark
+  // sits on texture instead of dead black.
+  let panelX = (uv.x - 0.04) / 1.00;
+  let ink = rowInk(clamp(panelX, 0.0, 1.0), row, 46.0) * glyph * step(0.0, panelX);
+
+  // Depth: the stack fades at top and bottom so it reads as a column, not a wall.
+  let depth = smoothstep(0.0, 0.30, uv.y) * smoothstep(1.0, 0.72, uv.y);
+
+  // The one that matches. Held still relative to the scroll so it stays put.
+  let hitRow = floor(0.42 * rows + scroll);
+  let isHit = step(0.5, 1.0 - abs(row - hitRow));
+
+  let slate = vec3<f32>(0.40, 0.49, 0.60);
+  let hot   = vec3<f32>(0.66, 1.00, 0.26);
+
+  // The match is kept clear of the wordmark column, so the type never has a lit
+  // row running through it.
+  let clearOfType = smoothstep(0.30, 0.38, uv.x);
+
+  // Everything that is not the match sits back; the match comes forward.
+  col += slate * ink * depth * 0.34 * (1.0 - isHit);
+  col += hot * ink * depth * isHit * clearOfType * 0.95;
+
+  // Bloom around the matching row.
+  let rowCenterY = (hitRow + 0.34 - scroll) / rows;
+  let dRow = abs(uv.y - rowCenterY);
+  col += hot * smoothstep(0.060, 0.0, dRow) * 0.065 * clearOfType;
+  // and a thin rule under it, like a selected result.
+  col += hot * smoothstep(0.0026, 0.0, abs(uv.y - (rowCenterY + 0.030)))
+             * clearOfType * smoothstep(1.0, 0.94, uv.x) * 0.45;
+
+  // Left scrim: a long, soft ramp so the wordmark has something quiet to sit on
+  // without a visible seam down the middle of the banner.
+  col *= mix(0.16, 1.0, smoothstep(0.05, 0.52, uv.x));
+
+  let v = 1.0 - 0.40 * length((uv - vec2<f32>(0.5)) * vec2<f32>(1.05, 1.25));
+  col *= clamp(v, 0.0, 1.0);
+  col += (h21(frag.xy * 0.7 + u.time) - 0.5) * 0.010;
+
+  return vec4<f32>(pow(max(col, vec3<f32>(0.0)), vec3<f32>(0.92)), 1.0);
+}
+`;
+
+async function run() {
+  const canvas = document.getElementById('gpu');
+  if (!navigator.gpu) { status.error = 'no webgpu'; return; }
+  const adapter = await navigator.gpu.requestAdapter();
+  const device = await adapter.requestDevice();
+  const ctx = canvas.getContext('webgpu');
+  const format = navigator.gpu.getPreferredCanvasFormat();
+  ctx.configure({ device, format, alphaMode: 'opaque' });
+
+  const module = device.createShaderModule({ code: WGSL });
+  const info = await module.getCompilationInfo();
+  const errs = info.messages.filter(m => m.type === 'error');
+  if (errs.length) { status.error = errs.map(m => `${m.lineNum}: ${m.message}`).join(' | '); return; }
+
+  const pipeline = device.createRenderPipeline({
+    layout: 'auto',
+    vertex: { module, entryPoint: 'vs' },
+    fragment: { module, entryPoint: 'fs', targets: [{ format }] },
+    primitive: { topology: 'triangle-list' },
+  });
+  const ubo = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+  const bind = device.createBindGroup({
+    layout: pipeline.getBindGroupLayout(0),
+    entries: [{ binding: 0, resource: { buffer: ubo } }],
+  });
+
+  window.__draw = async (t) => {
+    device.queue.writeBuffer(ubo, 0, new Float32Array([t, W, H, 0]));
+    const enc = device.createCommandEncoder();
+    const pass = enc.beginRenderPass({
+      colorAttachments: [{
+        view: ctx.getCurrentTexture().createView(),
+        clearValue: { r: 0, g: 0, b: 0, a: 1 }, loadOp: 'clear', storeOp: 'store',
+      }],
+    });
+    pass.setPipeline(pipeline); pass.setBindGroup(0, bind); pass.draw(3); pass.end();
+    device.queue.submit([enc.finish()]);
+    await device.queue.onSubmittedWorkDone();
+  };
+
+  // Type is drawn on a 2D canvas over the shader output, so it stays crisp
+  // instead of being approximated in the fragment shader.
+  // drawImage() reads nothing back from a WebGPU canvas, but toDataURL() does,
+  // so the shader output goes through an Image before the type is laid over it.
+  window.__compose = async () => {
+    const out = document.getElementById('out');
+    const g = out.getContext('2d');
+    const img = new Image();
+    img.src = canvas.toDataURL('image/png');
+    await img.decode();
+    g.clearRect(0, 0, W, H);
+    g.drawImage(img, 0, 0, W, H);
+
+    const x = 150;
+    g.textBaseline = 'alphabetic';
+
+    g.fillStyle = '#f2f6fa';
+    g.font = '700 232px -apple-system, "SF Pro Display", "Helvetica Neue", Helvetica, Arial';
+    g.letterSpacing = '-10px';
+    g.fillText('Sift', x, 428);
+
+    g.letterSpacing = '0px';
+    g.fillStyle = 'rgba(232, 240, 248, 0.80)';
+    g.font = '500 34px ui-monospace, "SF Mono", Menlo, monospace';
+    g.fillText('search everything you have ever', x + 6, 500);
+    g.fillText('done in Claude Code', x + 6, 548);
+
+    g.fillStyle = 'rgba(226, 236, 245, 0.34)';
+    g.font = '400 27px ui-monospace, "SF Mono", Menlo, monospace';
+    g.fillText('macOS · local index · open source', x + 6, 622);
+    return true;
+  };
+
+  status.ok = true;
+  await window.__draw(12.0);
+  await window.__compose();
+}
+run().catch(e => { status.error = String(e); });
+</script>
