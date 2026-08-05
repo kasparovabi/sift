@@ -26,3 +26,19 @@ jobs:
 
       - name: Assemble the app bundle
         run: ./scripts/make-app.sh release
+
+  web:
+    # The Windows/Linux build shares no code with the app, so it is tested on the
+    # platforms it is actually for.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-15]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Test
+        run: node --test web/test/sift.test.mjs

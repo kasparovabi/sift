@@ -1,0 +1,213 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sift</title>
+<style>
+  :root {
+    --base: #0e1a26; --surface: #172a3a; --surface-hi: #22394d; --line: #2d4c66;
+    --text: #dcecf5; --dim: #8aabc0; --accent: #5ac8e8; --hot: #c6ff2e; --radius: 12px;
+  }
+  :root[data-theme="graphite"] {
+    --base: #1c1d20; --surface: #26282c; --surface-hi: #33363c; --line: #3f4349;
+    --text: #e7e9ec; --dim: #9aa1aa; --accent: #8ea3c4; --radius: 10px;
+  }
+  :root[data-theme="paper"] {
+    --base: #f6f2e9; --surface: #fdfbf6; --surface-hi: #efe7d8; --line: #d8cfbc;
+    --text: #2e2a24; --dim: #6d6557; --accent: #9a5b2c; --hot: #9a7b12; --radius: 4px;
+  }
+  :root[data-theme="terminal"] {
+    --base: #080a04; --surface: #10140a; --surface-hi: #18200e; --line: #46502a;
+    --text: #bfe84a; --dim: #7a9438; --accent: #c6ff2e; --radius: 2px;
+    --mono: 1;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--base); color: var(--text);
+    font: 14px/1.5 -apple-system, "Segoe UI", system-ui, sans-serif;
+    height: 100vh; display: grid; grid-template-columns: 240px 380px 1fr;
+  }
+  :root[data-theme="terminal"] body,
+  :root[data-theme="terminal"] input { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; }
+  aside, .list { border-right: 1px solid var(--line); overflow-y: auto; }
+  aside { padding: 14px 10px; }
+  h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--dim);
+       margin: 16px 8px 6px; font-weight: 600; }
+  .row { padding: 7px 10px; border-radius: var(--radius); cursor: pointer;
+         display: flex; gap: 8px; align-items: baseline; }
+  .row:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+  .row[aria-selected="true"] { background: color-mix(in srgb, var(--accent) 18%, transparent); }
+  .row .n { margin-left: auto; color: var(--dim); font-size: 12px; }
+  .row .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  header { padding: 12px; border-bottom: 1px solid var(--line); display: flex; gap: 8px; }
+  input[type=search] {
+    flex: 1; background: var(--surface); border: 1px solid var(--line); color: var(--text);
+    border-radius: var(--radius); padding: 8px 11px; font-size: 14px; outline: none;
+  }
+  input[type=search]:focus { border-color: var(--accent); }
+  .list { display: flex; flex-direction: column; }
+  .items { overflow-y: auto; flex: 1; }
+  .card { padding: 11px 13px; border-bottom: 1px solid var(--line); cursor: pointer; }
+  .card:hover { background: var(--surface); }
+  .card[aria-selected="true"] { background: var(--surface-hi); }
+  .card .t { font-weight: 600; margin-bottom: 3px; }
+  .card .p { color: var(--dim); font-size: 12.5px;
+             display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .card .m { color: var(--dim); font-size: 11.5px; margin-top: 6px; display: flex; gap: 10px; }
+  .card mark { background: none; color: var(--hot, var(--accent)); font-weight: 600; }
+  main { overflow-y: auto; padding: 26px 30px; }
+  main h1 { font-size: 25px; margin: 0 0 10px; line-height: 1.25; }
+  .pills { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
+  .pill { background: var(--surface); border: 1px solid var(--line); border-radius: 999px;
+          padding: 4px 11px; font-size: 12px; color: var(--dim); }
+  .turn { background: var(--surface); border-radius: var(--radius); padding: 11px 13px; margin-bottom: 9px; }
+  .turn .who { font-size: 11px; font-weight: 700; letter-spacing: .04em; margin-bottom: 5px; }
+  .turn.you .who { color: var(--accent); }
+  .turn.claude .who { color: var(--hot, var(--accent)); }
+  .turn pre { margin: 0; white-space: pre-wrap; word-break: break-word; font: inherit; }
+  button {
+    background: var(--accent); color: var(--base); border: 0; border-radius: var(--radius);
+    padding: 8px 15px; font: inherit; font-weight: 600; cursor: pointer;
+  }
+  button.ghost { background: var(--surface); color: var(--text); border: 1px solid var(--line); }
+  .actions { display: flex; gap: 8px; margin-bottom: 20px; }
+  .empty { color: var(--dim); padding: 40px 0; }
+  select { background: var(--surface); color: var(--text); border: 1px solid var(--line);
+           border-radius: var(--radius); padding: 6px 8px; font: inherit; }
+  .foot { padding: 9px 12px; border-top: 1px solid var(--line); color: var(--dim); font-size: 12px;
+          display: flex; align-items: center; gap: 8px; }
+</style>
+
+<aside>
+  <h2>Lists</h2>
+  <div class="row" data-all aria-selected="true"><span class="name">All sessions</span><span class="n" id="allN"></span></div>
+  <h2>Projects</h2>
+  <div id="projects"></div>
+  <div class="foot">
+    <select id="theme" title="Appearance">
+      <option value="ocean">Ocean</option>
+      <option value="graphite">Graphite</option>
+      <option value="paper">Paper</option>
+      <option value="terminal">Terminal</option>
+    </select>
+    <button class="ghost" id="rescan" style="padding:6px 10px">Rescan</button>
+  </div>
+</aside>
+
+<section class="list">
+  <header><input type="search" id="q" placeholder="Search every session…" autofocus></header>
+  <div class="items" id="items"></div>
+</section>
+
+<main id="detail"><div class="empty">Pick a session to read it.</div></main>
+
+<script type="module">
+const $ = (s) => document.querySelector(s);
+const state = { project: null, id: null };
+
+const theme = localStorage.getItem('sift.theme') || 'ocean';
+document.documentElement.dataset.theme = theme;
+$('#theme').value = theme;
+$('#theme').onchange = (e) => {
+  document.documentElement.dataset.theme = e.target.value;
+  localStorage.setItem('sift.theme', e.target.value);
+};
+
+const ago = (ms) => {
+  if (!ms) return '';
+  const s = (Date.now() - ms) / 1000;
+  if (s < 90) return 'just now';
+  if (s < 5400) return `${Math.round(s / 60)} minutes ago`;
+  if (s < 129600) return `${Math.round(s / 3600)} hours ago`;
+  return `${Math.round(s / 86400)} days ago`;
+};
+const esc = (s) => String(s ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+
+// The server sends the matched run as plain text; marking it here keeps the API free of markup.
+function withMark(snippet, query) {
+  const words = query.trim().split(/\s+/).filter(Boolean).map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  let html = esc(snippet);
+  for (const w of words) html = html.replace(new RegExp(`(${w})`, 'ig'), '<mark>$1</mark>');
+  return html;
+}
+
+async function load() {
+  const stats = await fetch('/api/stats').then((r) => r.json());
+  $('#allN').textContent = stats.sessions;
+  const projects = await fetch('/api/projects').then((r) => r.json());
+  $('#projects').innerHTML = projects.map((p) => `
+    <div class="row" data-project="${esc(p.id)}" title="${esc(p.path)}">
+      <span class="name">${esc(p.name)}</span><span class="n">${p.count}</span>
+    </div>`).join('');
+  bindRows();
+  search();
+}
+
+function bindRows() {
+  document.querySelectorAll('[data-project], [data-all]').forEach((el) => {
+    el.onclick = () => {
+      document.querySelectorAll('[data-project], [data-all]')
+        .forEach((o) => o.setAttribute('aria-selected', o === el));
+      state.project = el.dataset.project ?? null;
+      search();
+    };
+  });
+}
+
+let timer;
+$('#q').oninput = () => { clearTimeout(timer); timer = setTimeout(search, 110); };
+$('#rescan').onclick = async () => {
+  $('#rescan').textContent = '…';
+  await fetch('/api/rescan', { method: 'POST' });
+  $('#rescan').textContent = 'Rescan';
+  load();
+};
+
+async function search() {
+  const q = $('#q').value;
+  const params = new URLSearchParams({ q });
+  if (state.project) params.set('project', state.project);
+  const rows = await fetch('/api/search?' + params).then((r) => r.json());
+  $('#items').innerHTML = rows.length ? rows.map((r) => `
+    <div class="card" data-id="${esc(r.id)}">
+      <div class="t">${esc(r.title)}</div>
+      <div class="p">${r.snippet ? withMark(r.snippet, q) : esc(r.preview)}</div>
+      <div class="m"><span>${esc(r.project)}</span>${r.branch ? `<span>${esc(r.branch)}</span>` : ''}
+        <span>${ago(r.lastActivity)}</span><span>${r.messages} messages</span></div>
+    </div>`).join('') : `<div class="empty" style="padding:24px">Nothing matches “${esc(q)}”.</div>`;
+  document.querySelectorAll('.card').forEach((c) => { c.onclick = () => open(c.dataset.id); });
+}
+
+async function open(id) {
+  state.id = id;
+  document.querySelectorAll('.card').forEach((c) => c.setAttribute('aria-selected', c.dataset.id === id));
+  const s = await fetch('/api/session?id=' + encodeURIComponent(id)).then((r) => r.json());
+  $('#detail').innerHTML = `
+    <h1>${esc(s.title)}</h1>
+    <div class="pills">
+      <span class="pill">${esc(s.project)}</span>
+      ${s.branch ? `<span class="pill">${esc(s.branch)}</span>` : ''}
+      <span class="pill">${s.messages} messages</span>
+      <span class="pill">${ago(s.lastActivity)}</span>
+    </div>
+    <div class="actions">
+      <button id="resume">Open in terminal</button>
+      <button class="ghost" id="reveal">Show folder</button>
+    </div>
+    <div class="pill" style="display:inline-block;margin-bottom:18px">${esc(s.cwd || '')}</div>
+    ${s.turns.map((t) => `
+      <div class="turn ${t.role}">
+        <div class="who">${t.role === 'you' ? 'You' : 'Claude'}</div>
+        <pre>${esc(t.text)}</pre>
+      </div>`).join('') || '<div class="empty">No conversation in this transcript.</div>'}`;
+  $('#resume').onclick = async (e) => {
+    e.target.textContent = 'Opening…';
+    await fetch('/api/open', { method: 'POST', headers: { 'content-type': 'application/json' },
+                               body: JSON.stringify({ id }) });
+    e.target.textContent = 'Open in terminal';
+  };
+  $('#reveal').onclick = () => fetch('/api/reveal', { method: 'POST',
+    headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id }) });
+}
+
+load();
+</script>

@@ -1,0 +1,154 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtemp, writeFile, mkdir, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+import { humanText, assistantText, parseTranscript, listTranscripts, decodeProjectDir, displayName }
+  from '../lib/scanner.mjs';
+import { IndexStore, ftsQuery } from '../lib/index-store.mjs';
+import { quoteForShell, powershellCommand, posixScript } from '../lib/terminal.mjs';
+import { reindex, config } from '../sift.mjs';
+
+async function fixture() {
+  const root = await mkdtemp(join(tmpdir(), 'sift-web-'));
+  const projects = join(root, 'projects');
+  const dir = join(projects, '-Users-alex-code-orbit-api');
+  await mkdir(dir, { recursive: true });
+  const lines = [
+    { type: 'user', uuid: 'u1', sessionId: 's1', cwd: '/Users/alex/code/orbit-api',
+      gitBranch: 'main', entrypoint: 'cli', timestamp: '2026-08-01T10:00:00.000Z',
+      message: { role: 'user', content: 'offset pagination is slow past page 200' } },
+    { type: 'assistant', uuid: 'a1', timestamp: '2026-08-01T10:00:20.000Z',
+      message: { role: 'assistant', content: [{ type: 'text', text: 'Switched to keyset pagination.' }] } },
+    { type: 'assistant', uuid: 'a2', timestamp: '2026-08-01T10:00:25.000Z',
+      message: { role: 'assistant', content: [{ type: 'tool_use', name: 'Bash' }] } },
+    { type: 'user', uuid: 'u2', timestamp: '2026-08-01T10:00:30.000Z',
+      message: { role: 'user', content: [{ type: 'tool_result', content: 'exit 0' }] } },
+    { type: 'user', uuid: 'u3', timestamp: '2026-08-01T10:00:40.000Z',
+      message: { role: 'user', content: '<system-reminder>be careful</system-reminder>' } },
+    { type: 'ai-title', uuid: 't1', title: 'Cursor pagination for events' },
+  ];
+  await writeFile(join(dir, 's1.jsonl'), lines.map((l) => JSON.stringify(l)).join('\n') + '\n');
+  return { root, projects, dir };
+}
+
+test('a transcript yields only what the two sides said', async () => {
+  const { root, dir } = await fixture();
+  const meta = await parseTranscript(join(dir, 's1.jsonl'));
+  assert.equal(meta.sessionId, 's1');
+  assert.equal(meta.cwd, '/Users/alex/code/orbit-api');
+  assert.equal(meta.gitBranch, 'main');
+  assert.equal(meta.title, 'Cursor pagination for events');
+  assert.equal(meta.messageCount, 2, 'the tool result and the reminder are not messages');
+  assert.equal(meta.toolCallCount, 1);
+  assert.match(meta.fullText, /keyset pagination/);
+  assert.doesNotMatch(meta.fullText, /system-reminder/);
+  await rm(root, { recursive: true, force: true });
+});
+
+test('tool results and injected reminders are not user messages', () => {
+  assert.equal(humanText({ message: { content: [{ type: 'tool_result', content: 'x' }] } }), null);
+  assert.equal(humanText({ message: { content: '<system-reminder>x</system-reminder>' } }), null);
+  assert.equal(humanText({ message: { content: '<local-command-stdout>x</local-command-stdout>' } }), null);
+  assert.equal(humanText({ isMeta: true, message: { content: 'hi' } }), null);
+  assert.equal(humanText({ message: { content: 'real question' } }), 'real question');
+});
+
+test('a turn that is only a tool call has nothing to show', () => {
+  assert.equal(assistantText({ message: { content: [{ type: 'tool_use', name: 'Bash' }] } }), null);
+  assert.equal(assistantText({ message: { content: [{ type: 'text', text: 'ok' },
+                                                    { type: 'tool_use', name: 'Bash' }] } }), 'ok');
+});
+
+test('search ranks, snippets, and matches prefixes', async () => {
+  const { root, projects } = await fixture();
+  const store = new IndexStore(':memory:');
+  const result = await reindex(store, projects);
+  assert.equal(result.total, 1);
+  assert.equal(result.indexed, 1);
+
+  const hits = store.search({ query: 'pagination' });
+  assert.equal(hits.length, 1);
+  assert.match(hits[0].snippet, /pagination/i);
+
+  assert.equal(store.search({ query: 'pagin' }).length, 1, 'prefix search');
+  assert.equal(store.search({ query: 'kubernetes' }).length, 0);
+  assert.equal(store.search({ query: '' }).length, 1, 'an empty query lists recent sessions');
+  store.close();
+  await rm(root, { recursive: true, force: true });
+});
+
+test('a rescan neither duplicates nor re-reads unchanged files', async () => {
+  const { root, projects, dir } = await fixture();
+  const store = new IndexStore(':memory:');
+  await reindex(store, projects);
+
+  const second = await reindex(store, projects);
+  assert.equal(second.indexed, 0, 'unchanged files are skipped on size and mtime');
+  assert.equal(store.count(), 1);
+  assert.equal(store.search({ query: 'pagination' }).length, 1, 'contentless FTS must not double up');
+
+  // Change the file: the row is replaced, not added to.
+  await writeFile(join(dir, 's1.jsonl'), JSON.stringify({
+    type: 'user', sessionId: 's1', cwd: '/Users/alex/code/orbit-api',
+    timestamp: '2026-08-02T10:00:00.000Z',
+    message: { role: 'user', content: 'a completely different subject: kubernetes' },
+  }) + '\n');
+  const third = await reindex(store, projects);
+  assert.equal(third.indexed, 1);
+  assert.equal(store.count(), 1);
+  assert.equal(store.search({ query: 'pagination' }).length, 0, 'the old text is gone from the index');
+  assert.equal(store.search({ query: 'kubernetes' }).length, 1);
+  store.close();
+  await rm(root, { recursive: true, force: true });
+});
+
+test('a deleted transcript leaves the index', async () => {
+  const { root, projects, dir } = await fixture();
+  const store = new IndexStore(':memory:');
+  await reindex(store, projects);
+  await rm(join(dir, 's1.jsonl'));
+  const result = await reindex(store, projects);
+  assert.equal(result.removed, 1);
+  assert.equal(store.count(), 0);
+  store.close();
+  await rm(root, { recursive: true, force: true });
+});
+
+test('a query cannot be a syntax error', () => {
+  assert.equal(ftsQuery('rate limiter'), '"rate"* AND "limiter"*');
+  assert.equal(ftsQuery('"unbalanced'), '"unbalanced"*');
+  assert.equal(ftsQuery('  '), '""');
+  const store = new IndexStore(':memory:');
+  assert.doesNotThrow(() => store.search({ query: 'a "b* (c' }));
+  store.close();
+});
+
+test('paths with quotes cannot break out of the launch command', () => {
+  assert.equal(quoteForShell("it's", true), "'it''s'");
+  assert.equal(quoteForShell("it's", false), "'it'\\''s'");
+
+  const ps = powershellCommand({ claude: 'claude', cwd: "C:\\code\\it's", sessionId: 'abc-1' });
+  assert.match(ps, /Set-Location 'C:\\code\\it''s'/);
+  assert.match(ps, /--resume 'abc-1'/);
+
+  const sh = posixScript({ claude: '/usr/bin/claude', cwd: '/tmp/a b', sessionId: 'x' });
+  assert.match(sh, /^#!\/bin\/sh/);
+  assert.match(sh, /cd '\/tmp\/a b' \|\| exit 1/);
+});
+
+test('project directory names decode back to something readable', () => {
+  assert.equal(decodeProjectDir('-Users-alex-code-orbit-api'), '/Users/alex/code/orbit/api');
+  assert.equal(displayName('/Users/alex/code/orbit-api'), 'orbit-api');
+  assert.equal(displayName('/Users/alex/code/'), 'code');
+});
+
+test('data locations follow the platform and are overridable', () => {
+  const overridden = config({ SIFT_PROJECTS_ROOT: '/tmp/p', SIFT_SUPPORT_DIR: '/tmp/s' });
+  assert.equal(overridden.projectsRoot, '/tmp/p');
+  assert.equal(overridden.supportDir, '/tmp/s');
+  const plain = config({});
+  assert.match(plain.projectsRoot, /[\\/]\.claude[\\/]projects$/);
+  assert.ok(plain.port > 0);
+});

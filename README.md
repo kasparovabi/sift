@@ -105,6 +105,21 @@ WebGPU shader the header image was rendered from: open it, and it draws live.
 
 ---
 
+## Windows and Linux
+
+The app is SwiftUI, so it is macOS only. `web/` is the same idea for everywhere else: it
+reads the same transcripts, keeps the same kind of FTS5 index, and serves the interface to a
+browser instead. One command, no dependencies, since SQLite ships inside Node 22.
+
+```sh
+node web/sift.mjs
+```
+
+On a Windows machine with 1,067 transcripts the first index took 13 seconds and queries come
+back in about 8 ms. See [web/README.md](web/README.md).
+
+---
+
 ## Requirements
 
 - macOS 14 or later

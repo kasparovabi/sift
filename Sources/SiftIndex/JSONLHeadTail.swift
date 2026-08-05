@@ -72,9 +72,13 @@ enum JSONLHeadTail {
                 accumulate(text, into: &meta)
             }
         case "assistant":
-            meta.messageCount += 1
             if hasToolUse(obj) { meta.toolCallCount += 1 }
-            if let text = assistantPlainText(obj) { accumulate(text, into: &meta) }
+            // Counted only when the turn carries prose, so the number agrees with the
+            // transcript, which shows what the two sides said and nothing else.
+            if let text = assistantPlainText(obj) {
+                meta.messageCount += 1
+                accumulate(text, into: &meta)
+            }
         case "ai-title":
             if let t = aiTitle(obj) { meta.aiTitle = t }
         default:
