@@ -238,7 +238,7 @@ public final class IndexStore: Sendable {
     public func search(_ rawQuery: String, filters: SearchFilters) async throws -> [SessionSummary] {
         try await dbQueue.read { db in
             let trimmed = rawQuery.trimmingCharacters(in: .whitespacesAndNewlines)
-            let pattern = trimmed.isEmpty ? nil : try? FTS5Pattern(matchingAllPrefixesIn: trimmed)
+            let pattern = trimmed.isEmpty ? nil : FTS5Pattern(matchingAllPrefixesIn: trimmed)
 
             // Structured filters apply equally to keyword and recency queries.
             var conditions: [String] = []

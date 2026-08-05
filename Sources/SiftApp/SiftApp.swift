@@ -210,13 +210,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// A store that will not open even after recovery. Shown as an alert instead of a crash
     /// report, so the message says what happened and where, rather than "Sift quit unexpectedly".
-    static func reportFatal(_ message: String) -> Never {
-        let alert = NSAlert()
-        alert.alertStyle = .critical
-        alert.messageText = "Sift cannot start"
-        alert.informativeText = message
-        alert.addButton(withTitle: "Quit")
-        alert.runModal()
+    /// assumeIsolated rather than @MainActor: this is called from `SiftApp.init`, which
+    /// SwiftUI runs on the main thread but does not declare as main-actor isolated, so an
+    /// isolated function would not be callable from there.
+    nonisolated static func reportFatal(_ message: String) -> Never {
+        MainActor.assumeIsolated {
+            let alert = NSAlert()
+            alert.alertStyle = .critical
+            alert.messageText = "Sift cannot start"
+            alert.informativeText = message
+            alert.addButton(withTitle: "Quit")
+            alert.runModal()
+        }
         exit(1)
     }
 

@@ -398,7 +398,7 @@ struct NeuralBrainView: View {
         alpha += (target - alpha) * 0.07
         var p = pos
         var v = vel
-        let moved = engine.relax(&p, vel: &v, size: viewSize, pinned: dragId,
+        _ = engine.relax(&p, vel: &v, size: viewSize, pinned: dragId,
                                  pinTo: dragging ? dragTarget : nil,
                                  alpha: alpha, maxStep: dragging ? 14 : 18)
         pos = p
