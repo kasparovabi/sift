@@ -42,3 +42,15 @@ jobs:
           node-version: '22'
       - name: Test
         run: node --test web/test/sift.test.mjs
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Test
+        run: dotnet test windows/Sift.Tests/Sift.Tests.csproj -c Release
+      - name: Publish a single executable
+        run: dotnet publish windows/Sift/Sift.csproj -c Release -r win-x64 -o publish

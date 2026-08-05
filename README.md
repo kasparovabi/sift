@@ -105,18 +105,30 @@ WebGPU shader the header image was rendered from: open it, and it draws live.
 
 ---
 
-## Windows and Linux
+## Windows
 
-The app is SwiftUI, so it is macOS only. `web/` is the same idea for everywhere else: it
-reads the same transcripts, keeps the same kind of FTS5 index, and serves the interface to a
-browser instead. One command, no dependencies, since SQLite ships inside Node 22.
+`windows/` is a native Windows app: WPF on .NET 8, one `Sift.exe` with no runtime to install
+first. SwiftUI does not exist on Windows, so it is a separate implementation rather than a
+port, reading the same transcripts and keeping the same kind of FTS5 index.
+
+```powershell
+dotnet publish windows\Sift\Sift.csproj -c Release -r win-x64 -o publish
+.\publish\Sift.exe
+```
+
+Measured on 1,067 transcripts: about 20 seconds to index, queries under a millisecond,
+19.5 MB index. See [windows/README.md](windows/README.md).
+
+## Linux, or a browser anywhere
+
+`web/` is the same index served to a browser, for machines that are neither. One command, no
+dependencies, since SQLite ships inside Node 22.
 
 ```sh
 node web/sift.mjs
 ```
 
-On a Windows machine with 1,067 transcripts the first index took 13 seconds and queries come
-back in about 8 ms. See [web/README.md](web/README.md).
+See [web/README.md](web/README.md).
 
 ---
 
