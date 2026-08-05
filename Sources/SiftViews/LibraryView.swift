@@ -88,8 +88,30 @@ public struct LibraryView: View {
             toolRow("My folders", "folder", .folders)
             toolRow("Knowledge", "brain", .brain)
             toolRow("Overview", "chart.bar.doc.horizontal", .dashboard)
+            settingsRow
         }
         .padding(.vertical, 6)
+    }
+
+    /// Themes and the extraction switch live in Settings, and ⌘, is not something people
+    /// go looking for. The sidebar is where the rest of the app is reached from, so this
+    /// is reached the same way.
+    private var settingsRow: some View {
+        let theme = themes.theme
+        return SettingsLink {
+            HStack(spacing: 8) {
+                Image(systemName: "gearshape").frame(width: 16)
+                Text("Settings")
+                Spacer(minLength: 0)
+                Text("⌘,").foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .contentShape(Rectangle())
+            .background(.clear, in: RoundedRectangle(cornerRadius: theme.cornerRadius))
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 6)
     }
 
     private func toolRow(_ title: String, _ icon: String, _ target: LibrarySection) -> some View {

@@ -44,7 +44,7 @@ private struct SelectedSessionView: View {
                             statPill("clock") { Text(date, format: .relative(presentation: .named)) }
                         }
                         if session.messageCount > 0 {
-                            statPill("bubble.left.and.bubble.right") { Text("\(session.messageCount) mesaj") }
+                            statPill("bubble.left.and.bubble.right") { Text("\(session.messageCount) messages") }
                         }
                         if let branch = session.gitBranch, !branch.isEmpty, branch != "HEAD" {
                             statPill("arrow.triangle.branch") { Text(branch) }
@@ -123,7 +123,7 @@ private struct SelectedSessionView: View {
             Text(turn.text)
                 .font(.caption)
                 .lineLimit(4)
-                .foregroundStyle(turn.role == .tool ? Palette.textDim : Palette.textPrimary)
+                .foregroundStyle(Palette.textPrimary)
                 .textSelection(.enabled)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -133,9 +133,8 @@ private struct SelectedSessionView: View {
 
     private func roleStyle(_ role: TranscriptTurn.Role) -> (String, Color) {
         switch role {
-        case .user: return ("Sen", Palette.cyan)
+        case .user: return ("You", Palette.cyan)
         case .assistant: return ("Claude", Palette.accent)
-        case .tool: return ("Tool", Palette.acid)
         }
     }
 

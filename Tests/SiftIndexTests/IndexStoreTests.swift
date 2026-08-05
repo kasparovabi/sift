@@ -132,22 +132,31 @@ final class IndexStoreTests: XCTestCase {
         XCTAssertFalse(backfill, "this session has fullText, so no backfill is needed")
     }
 
-    func testTranscriptParsing() throws {
+    func testTranscriptKeepsOnlyTheConversation() throws {
         let tmp = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("t-\(UUID().uuidString).jsonl")
         defer { try? FileManager.default.removeItem(at: tmp) }
         let lines = [
             #"{"type":"user","uuid":"u1","timestamp":"2026-06-05T10:00:00.000Z","message":{"role":"user","content":"hello there"}}"#,
             #"{"type":"assistant","uuid":"a1","timestamp":"2026-06-05T10:00:01.000Z","message":{"role":"assistant","content":[{"type":"text","text":"hi, how can I help"}]}}"#,
-            #"{"type":"assistant","uuid":"a2","timestamp":"2026-06-05T10:00:02.000Z","message":{"role":"assistant","content":[{"type":"tool_use","name":"Bash"}]}}"#
+            // A turn that is nothing but a tool call: no prose, so nothing to show.
+            #"{"type":"assistant","uuid":"a2","timestamp":"2026-06-05T10:00:02.000Z","message":{"role":"assistant","content":[{"type":"tool_use","name":"Bash"}]}}"#,
+            // The tool's result comes back as a "user" message, but nobody typed it.
+            #"{"type":"user","uuid":"u2","timestamp":"2026-06-05T10:00:03.000Z","message":{"role":"user","content":[{"type":"tool_result","content":"exit 0"}]}}"#,
+            // Neither did the harness reminders and slash-command envelopes.
+            #"{"type":"user","uuid":"u3","timestamp":"2026-06-05T10:00:04.000Z","message":{"role":"user","content":"<system-reminder>be careful</system-reminder>"}}"#,
+            #"{"type":"user","uuid":"u4","timestamp":"2026-06-05T10:00:05.000Z","message":{"role":"user","content":"<local-command-stdout>ok</local-command-stdout>"}}"#,
+            // Text alongside a tool call is still something the assistant said.
+            #"{"type":"assistant","uuid":"a3","timestamp":"2026-06-05T10:00:06.000Z","message":{"role":"assistant","content":[{"type":"text","text":"running it now"},{"type":"tool_use","name":"Bash"}]}}"#,
+            #"{"type":"user","uuid":"u5","timestamp":"2026-06-05T10:00:07.000Z","message":{"role":"user","content":"thanks"}}"#
         ]
         try (lines.joined(separator: "\n") + "\n").write(to: tmp, atomically: true, encoding: .utf8)
 
         let turns = TranscriptLoader.parse(filePath: tmp.path, maxTurns: 100)
-        XCTAssertEqual(turns.count, 3)
-        XCTAssertEqual(turns[0].role, .user)
-        XCTAssertEqual(turns[0].text, "hello there")
-        XCTAssertEqual(turns[1].role, .assistant)
-        XCTAssertEqual(turns[2].role, .tool)
+
+        XCTAssertEqual(turns.map(\.role), [.user, .assistant, .assistant, .user],
+                       "only what the two sides actually said belongs in the transcript")
+        XCTAssertEqual(turns.map(\.text),
+                       ["hello there", "hi, how can I help", "running it now", "thanks"])
     }
 
     @MainActor

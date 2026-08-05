@@ -60,7 +60,7 @@ public struct SettingsView: View {
             }
             LabeledContent("Sessions open in", value: TerminalLauncher.preferredTerminalName)
             LabeledContent("Indexed sessions", value: "\(index.totalSessionCount)")
-            LabeledContent("Project", value: "\(index.projects.count)")
+            LabeledContent("Projects", value: "\(index.projects.count)")
             Button("Rescan now") { Task { await index.rescan() } }
                 .disabled(index.isScanning)
         }

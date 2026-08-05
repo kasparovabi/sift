@@ -1,11 +1,14 @@
 import Foundation
 
 /// One rendered turn in a session transcript preview (read-only).
+///
+/// Only the two sides of the conversation exist here. A session's transcript also holds
+/// the machinery between them — tool calls, their results, injected reminders — and none
+/// of that is what someone is looking for when they reopen a session months later.
 public struct TranscriptTurn: Identifiable, Sendable, Hashable {
     public enum Role: Sendable, Hashable {
         case user
         case assistant
-        case tool
     }
 
     public let id: String

@@ -46,7 +46,7 @@ public enum TranscriptLoader {
             case "assistant":
                 if let text = assistantText(obj) {
                     seen.insert(uuid)
-                    turns.append(TranscriptTurn(id: uuid, role: text.isTool ? .tool : .assistant, text: text.value, timestamp: ts))
+                    turns.append(TranscriptTurn(id: uuid, role: .assistant, text: text, timestamp: ts))
                 }
             default:
                 break
@@ -71,32 +71,26 @@ public enum TranscriptLoader {
         }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
-        for prefix in ["<command-", "<task-notification", "<scheduled-wakeup", "<background-task", "<system-reminder"]
+        // Slash-command envelopes, hook output and injected reminders arrive as "user"
+        // messages but nobody typed them, so they are not part of the conversation.
+        for prefix in ["<command-", "<local-command", "<task-notification", "<scheduled-wakeup",
+                       "<background-task", "<system-reminder"]
         where trimmed.hasPrefix(prefix) { return nil }
         return trimmed
     }
 
-    private static func assistantText(_ obj: [String: Any]) -> (value: String, isTool: Bool)? {
-        guard let message = obj["message"] as? [String: Any],
-              let blocks = message["content"] as? [[String: Any]] else {
-            if let message = obj["message"] as? [String: Any], let s = message["content"] as? String, !s.isEmpty {
-                return (s, false)
-            }
-            return nil
+    /// What the assistant actually said. A turn that only carries `tool_use` blocks has
+    /// no prose in it, so it yields nothing and never reaches the transcript.
+    private static func assistantText(_ obj: [String: Any]) -> String? {
+        guard let message = obj["message"] as? [String: Any] else { return nil }
+        if let s = message["content"] as? String {
+            let trimmed = s.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
         }
-        var texts: [String] = []
-        var tools: [String] = []
-        for block in blocks {
-            switch block["type"] as? String {
-            case "text": if let t = block["text"] as? String { texts.append(t) }
-            case "tool_use": if let name = block["name"] as? String { tools.append(name) }
-            default: break
-            }
-        }
+        guard let blocks = message["content"] as? [[String: Any]] else { return nil }
+        let texts = blocks.compactMap { ($0["type"] as? String) == "text" ? $0["text"] as? String : nil }
         let joined = texts.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
-        if !joined.isEmpty { return (joined, false) }
-        if !tools.isEmpty { return ("⚙︎ " + tools.joined(separator: ", "), true) }
-        return nil
+        return joined.isEmpty ? nil : joined
     }
 
     private static func parseDate(_ s: String) -> Date? {
