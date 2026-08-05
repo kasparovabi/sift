@@ -31,9 +31,7 @@ public final class SessionMetaStore {
         if let url {
             self.url = url
         } else {
-            let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-                ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support")
-            self.url = base.appendingPathComponent("Sift/session-meta.json")
+            self.url = AppPaths.supportDirectory.appendingPathComponent("session-meta.json")
         }
         load()
     }

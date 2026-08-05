@@ -14,10 +14,18 @@ APP=/Applications/Sift.app/Contents/MacOS/Sift
 mkdir -p "$OUT"
 
 launch() {
-  pkill -x Sift 2>/dev/null; sleep 1.5
+  # Wait for the previous instance to actually be gone. Measuring a window while the old
+  # process is still on screen once captured a whole clip of the real library instead of
+  # the demo one, and that is only visible afterwards, in the finished video.
+  pkill -x Sift 2>/dev/null
+  for _ in $(seq 1 40); do pgrep -x Sift >/dev/null || break; sleep 0.25; done
+  pgrep -x Sift >/dev/null && { echo "previous instance would not quit" >&2; exit 1; }
+
   defaults write io.github.kasparovabi.sift sift.themeID -string "$1"
   SIFT_PROJECTS_ROOT="$DEMO/projects" SIFT_SUPPORT_DIR="$DEMO/support" "$APP" >/dev/null 2>&1 &
+  local pid=$!
   sleep 11
+  kill -0 "$pid" 2>/dev/null || { echo "app exited during launch" >&2; exit 1; }
   read -r WX WY WW WH < <("$SCR/bounds" Sift)
   [ -z "${WW:-}" ] && { echo "no window"; exit 1; }
 }
@@ -39,15 +47,19 @@ record 3 "$OUT/1.mp4"; echo "1 terminal · library"
 launch graphite
 cliclick "c:$(at 0.345 0.092)"; sleep 1
 ( sleep 0.8; cliclick -w 95 t:"pagination" ) &
-record 4 "$OUT/2.mp4"; echo "2 graphite · search"
+record 3.5 "$OUT/2.mp4"; echo "2 graphite · search"
 
 launch ocean
-cliclick "c:$(at 0.069 0.899)"; sleep 3
-cliclick "c:$(at 0.777 0.089)"; sleep 6
-record 4 "$OUT/3.mp4"; echo "3 ocean · knowledge graph"
+cliclick "c:$(at 0.075 0.849)"; sleep 3      # sidebar: Knowledge
+cliclick "c:$(at 0.777 0.089)"; sleep 6      # switch to Graph, let it settle
+record 3.5 "$OUT/3.mp4"; echo "3 ocean · knowledge graph"
 
 launch paper
-cliclick "c:$(at 0.33 0.20)"; sleep 2
+cliclick "c:$(at 0.33 0.20)"; sleep 2        # open a session
 record 3 "$OUT/4.mp4"; echo "4 paper · session"
+
+launch system
+cliclick "c:$(at 0.075 0.771)"; sleep 2      # sidebar: Loops
+record 3 "$OUT/5.mp4"; echo "5 system · loops"
 
 pkill -x Sift

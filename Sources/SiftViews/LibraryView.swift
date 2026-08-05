@@ -10,6 +10,7 @@ enum LibrarySection: Hashable {
     case dashboard
     case quickTask
     case tasks
+    case loops
     case folders
     case brain
 
@@ -84,7 +85,8 @@ public struct LibraryView: View {
     private var tools: some View {
         VStack(spacing: 1) {
             toolRow("Quick task", "bolt.fill", .quickTask)
-            toolRow("Tasks", "checklist", .tasks)
+            toolRow("Scheduled", "clock.arrow.2.circlepath", .tasks)
+            toolRow("Loops", "arrow.triangle.2.circlepath", .loops)
             toolRow("My folders", "folder", .folders)
             toolRow("Knowledge", "brain", .brain)
             toolRow("Overview", "chart.bar.doc.horizontal", .dashboard)
@@ -160,7 +162,8 @@ public struct LibraryView: View {
         case .sessions:  SessionDetailPane()
         case .dashboard: DashboardView(onResume: resume, onNewFolder: newFolderSession)
         case .quickTask: QuickTaskView()
-        case .tasks:     TasksView()
+        case .tasks:     TasksView(mode: .scheduled)
+        case .loops:     TasksView(mode: .loop)
         case .folders:   FoldersView()
         case .brain:     BrainView()
         }

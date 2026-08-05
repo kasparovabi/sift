@@ -16,11 +16,11 @@ Sift indexes those transcripts and makes them searchable in milliseconds. Find t
 read it, and pick it back up in your own terminal.
 
 <p align="center">
-  <img src="docs/media/tour.gif" width="760" alt="Sift: browsing the library, searching, the knowledge graph, and a session opened — shown across four themes">
+  <img src="docs/media/tour.gif" width="760" alt="Sift: the library, a search, the knowledge graph, a session opened, and a loop — shown across five themes">
 </p>
 
-<p align="center"><em>The library, a search, the knowledge graph, and a session opened,
-in four of the five themes.</em></p>
+<p align="center"><em>The library, a search, the knowledge graph, a session opened and a
+loop — one theme each.</em></p>
 
 Search, resume, quick tasks, scheduled tasks and loops all run against local files and a
 local SQLite index. One optional feature, knowledge extraction, does send transcript text
@@ -110,8 +110,8 @@ WebGPU shader the header image was rendered from: open it, and it draws live.
 - macOS 14 or later
 - [Claude Code](https://claude.com/claude-code) installed and signed in
 - A Swift 6 toolchain (Xcode 16 or the standalone toolchain) to build
-- Optional: [Ghostty](https://ghostty.org). Sessions open there when it is installed and fall
-  back to Terminal.app otherwise.
+- Optional: [Ghostty](https://ghostty.org). Sessions open there when it is installed, and in
+  Terminal.app otherwise. Neither path asks for any permission.
 
 ---
 

@@ -32,7 +32,7 @@ let package = Package(
         ),
         .executableTarget(
             name: "SiftBrainMCP",
-            dependencies: ["SiftBrain"]
+            dependencies: ["SiftBrain", "SiftCore"]
         ),
         .target(
             name: "SiftRuntime",

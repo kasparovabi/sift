@@ -100,17 +100,39 @@ public enum TerminalLauncher {
         }
     }
 
-    /// Fallback for a machine without Ghostty. Terminal.app has no `-e`, so it is driven
-    /// through AppleScript instead.
-    private static func runInSystemTerminal(command: String?, cwd: String) {
-        let full = command.map { "cd \(shQuoted(cwd)); \($0)" } ?? "cd \(shQuoted(cwd))"
-        let script = """
-            tell application "Terminal"
-                activate
-                do script \(appleScriptQuoted(full))
-            end tell
-            """
-        launch("/usr/bin/osascript", ["-e", script])
+    /// Fallback for a machine without Ghostty, which is most machines.
+    ///
+    /// Terminal.app has no `-e`, and the obvious alternative — driving it with AppleScript —
+    /// makes macOS ask for Automation permission the first time anyone opens a session. Deny
+    /// it, or miss the dialog, and the app's main action silently does nothing. Handing
+    /// `open` a throwaway executable script asks for no permission at all.
+    static func runInSystemTerminal(command: String?, cwd: String) {
+        guard let scriptURL = writeLaunchScript(terminalScript(command: command, cwd: cwd)) else { return }
+        launch("/usr/bin/open", ["-a", "Terminal", scriptURL.path])
+        // Terminal reads the file once, at startup.
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 20) {
+            try? FileManager.default.removeItem(at: scriptURL)
+        }
+    }
+
+    static func terminalScript(command: String?, cwd: String) -> String {
+        var lines = ["#!/bin/sh", "cd \(shQuoted(cwd)) || exit 1"]
+        // `exec` so the shell does not linger as an extra process; without a command this is
+        // just a shell sitting in the directory, so hand over to an interactive one.
+        lines.append(command ?? "exec \(shQuoted(shell)) -i")
+        return lines.joined(separator: "\n") + "\n"
+    }
+
+    private static func writeLaunchScript(_ contents: String) -> URL? {
+        let url = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("sift-session-\(UUID().uuidString).command")
+        do {
+            try contents.write(to: url, atomically: true, encoding: .utf8)
+            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
+            return url
+        } catch {
+            return nil
+        }
     }
 
     private static var shell: String {
@@ -149,8 +171,4 @@ public enum TerminalLauncher {
         return out
     }
 
-    private static func appleScriptQuoted(_ token: String) -> String {
-        "\"" + token.replacingOccurrences(of: "\\", with: "\\\\")
-                    .replacingOccurrences(of: "\"", with: "\\\"") + "\""
-    }
 }

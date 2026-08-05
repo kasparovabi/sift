@@ -364,6 +364,41 @@ def seed_brain(db_path: Path) -> tuple[int, int]:
 
 
 
+LOOPS = [
+    ("Keep the OpenAPI spec in step with the routes",
+     "Compare the route table against openapi.yaml and add whatever is missing.",
+     "/Users/alex/code/orbit-api", "Every route appears in the spec with a response schema.",
+     "agent", 3, "passed", 2),
+    ("Get the flaky checkout test green",
+     "Find why checkout.spec.ts fails about one run in five and fix the cause.",
+     "/Users/alex/code/atlas-web", "npx vitest run checkout.spec.ts", "shell", 5, "passed", 3),
+    ("Cut the cold-start time under 400ms",
+     "Profile the worker boot path and remove the slowest avoidable work.",
+     "/Users/alex/code/pipeline-runner", "Boot completes in under 400ms on a cold cache.",
+     "agent", 4, "idle", 0),
+]
+
+
+def seed_loops(db_path: Path) -> int:
+    """Loops live in their own database, seeded the same way the brain is."""
+    import sqlite3
+
+    if not db_path.exists():
+        return 0
+    conn = sqlite3.connect(db_path)
+    now = datetime.now(timezone.utc).timestamp()
+    for i, (title, prompt, cwd, done, kind, passes, state, attempt) in enumerate(LOOPS):
+        conn.execute(
+            'INSERT OR REPLACE INTO loop_task (id, title, prompt, cwd, doneWhen, checkKind,'
+            ' maxPasses, rememberOnPass, state, lastAttempt, createdAt, updatedAt)'
+            ' VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)',
+            (base62(7000 + i), title, prompt, cwd, done, kind, passes, state, attempt,
+             now - (i + 1) * 7200, now - (i + 1) * 3600))
+    conn.commit()
+    conn.close()
+    return len(LOOPS)
+
+
 def main() -> int:
     args = sys.argv[1:]
     # The knowledge graph has to be seeded AFTER the app has created and migrated
@@ -374,7 +409,8 @@ def main() -> int:
             return 2
         support = Path(args[1]).expanduser()
         nodes, links = seed_brain(support / "brain.sqlite")
-        print(f"seeded {nodes} entities and {links} relations into {support}")
+        loops = seed_loops(support / "loops.sqlite")
+        print(f"seeded {nodes} entities, {links} relations and {loops} loops into {support}")
         return 0
 
     if not args:

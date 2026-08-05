@@ -73,9 +73,7 @@ public final class SessionRuntime: SessionLauncher, SessionRuntimeStatusProvidin
     public init() {
         self.environment = EnvironmentResolver.environmentStrings()
         self.binary = ClaudeBinary.resolve()
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support")
-        let supportDir = base.appendingPathComponent("Sift")
+        let supportDir = AppPaths.supportDirectory
         try? FileManager.default.createDirectory(at: supportDir, withIntermediateDirectories: true)
         self.loopStore = try? LoopStore(path: supportDir.appendingPathComponent("loops.sqlite").path)
         loadLoopTasks()

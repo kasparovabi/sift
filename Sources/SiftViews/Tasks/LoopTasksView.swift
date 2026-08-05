@@ -77,7 +77,7 @@ private struct LoopComposer: View {
 
             Picker("", selection: $checkKind) {
                 Text("Agent checker").tag(CheckKind.agent)
-                Text("Komut").tag(CheckKind.shell)
+                Text("Command").tag(CheckKind.shell)
             }
             .pickerStyle(.segmented).labelsHidden()
 
@@ -190,7 +190,7 @@ private struct LoopRow: View {
                 HStack(spacing: 6) {
                     badge
                     Text(folderName).font(Palette.font(10)).foregroundStyle(Palette.textDim).lineLimit(1).truncationMode(.head)
-                    Text(task.checkKind == .agent ? "ajan" : "komut").font(Palette.font(10)).foregroundStyle(Palette.textDim)
+                    Text(task.checkKind == .agent ? "agent" : "command").font(Palette.font(10)).foregroundStyle(Palette.textDim)
                 }
             }
             Spacer(minLength: 4)

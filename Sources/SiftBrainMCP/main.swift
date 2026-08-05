@@ -1,11 +1,11 @@
 import Foundation
 import SiftBrain
+import SiftCore
 
 // DB path: env override or default app-support location.
 let dbPath: String = {
     if let p = ProcessInfo.processInfo.environment["SIFT_BRAIN_DB"], !p.isEmpty { return p }
-    let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        .appendingPathComponent("Sift", isDirectory: true)
+    let base = AppPaths.supportDirectory
     try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
     return base.appendingPathComponent("brain.sqlite").path
 }()
