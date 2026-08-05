@@ -3,23 +3,12 @@ import XCTest
 @testable import SiftRuntime
 @testable import SiftViews
 
+/// Preference save/restore happens inside each test rather than in `setUp`/`tearDown`.
+/// Those overrides are nonisolated, so on Swift 6.1 they cannot touch the main-actor state
+/// these tests exercise, and the suite failed to compile on the CI toolchain while building
+/// fine on a newer local one.
 @MainActor
 final class ThemeTests: XCTestCase {
-    private let key = "sift.themeID"
-    private var original: Any?
-
-    override func setUp() {
-        original = UserDefaults.standard.object(forKey: key)
-    }
-
-    override func tearDown() {
-        if let original {
-            UserDefaults.standard.set(original, forKey: key)
-        } else {
-            UserDefaults.standard.removeObject(forKey: key)
-        }
-        Palette.current = .system
-    }
 
     func testEveryThemeIsListedOnceAndHasCopy() {
         let ids = SiftTheme.all.map(\.id)
@@ -65,25 +54,41 @@ final class ThemeTests: XCTestCase {
         XCTAssertEqual(SiftTheme.named("wasteland").id, "system", "a removed theme must not break launch")
     }
 
-    func testPickingAThemePersistsItAndRepaintsImmediately() {
-        UserDefaults.standard.removeObject(forKey: key)
-        let store = ThemeStore(theme: .system)
-        XCTAssertEqual(Palette.current.id, "system")
-
-        store.theme = .paper
-        XCTAssertEqual(Preferences.themeID, "paper", "the choice survives a relaunch")
-        XCTAssertEqual(Palette.current.id, "paper", "and the tokens views read change with it")
-        XCTAssertEqual(Palette.base, SiftTheme.paper.base)
-    }
-
-    func testAStoredThemeIsRestoredOnLaunch() {
-        Preferences.themeID = "ocean"
-        XCTAssertEqual(ThemeStore().theme.id, "ocean")
-    }
-
     func testSystemThemeDefersToAppKitSoItTracksLightAndDark() {
         XCTAssertNil(SiftTheme.system.colorScheme)
         XCTAssertEqual(SiftTheme.system.accent, Color(nsColor: .controlAccentColor))
         XCTAssertNil(SiftTheme.system.customFontName, "the system face, whatever the user set")
+    }
+
+    func testPickingAThemePersistsItAndRepaintsImmediately() {
+        withStoredThemeRestored {
+            Preferences.themeID = nil
+            let store = ThemeStore(theme: .system)
+            XCTAssertEqual(Palette.current.id, "system")
+
+            store.theme = .paper
+            XCTAssertEqual(Preferences.themeID, "paper", "the choice survives a relaunch")
+            XCTAssertEqual(Palette.current.id, "paper", "and the tokens views read change with it")
+            XCTAssertEqual(Palette.base, SiftTheme.paper.base)
+        }
+    }
+
+    func testAStoredThemeIsRestoredOnLaunch() {
+        withStoredThemeRestored {
+            Preferences.themeID = "ocean"
+            XCTAssertEqual(ThemeStore().theme.id, "ocean")
+        }
+    }
+
+    /// Runs `body` with the stored theme preference and live palette put back afterwards, so
+    /// a test cannot leave the developer's own choice changed.
+    private func withStoredThemeRestored(_ body: () -> Void) {
+        let storedTheme = Preferences.themeID
+        let livePalette = Palette.current
+        defer {
+            Preferences.themeID = storedTheme
+            Palette.current = livePalette
+        }
+        body()
     }
 }
