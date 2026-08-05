@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "SiftWinUI (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "SiftWinUI (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}

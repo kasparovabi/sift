@@ -44,6 +44,20 @@ back in about 8 ms, and the index is 19.5 MB.
 
 The server binds to `127.0.0.1` only.
 
+## Unlimited retention
+
+Claude Code deletes transcripts older than `cleanupPeriodDays`, 30 by default. A search tool
+whose corpus evaporates after a month is not a search tool, so Sift archives every transcript
+it indexes into `<support dir>/archive` as the original `.jsonl`. A session Claude Code has
+since removed stays searchable and readable.
+
+`GET /api/retention` reports the current setting and how much has been archived;
+`POST /api/retention` sets `cleanupPeriodDays` to a hundred years, backing up the old
+`settings.json` as `settings.json.sift-backup` and leaving every other setting alone.
+
+Resuming an archived session puts the transcript back where Claude Code expects it first,
+because `claude --resume` looks for it on disk.
+
 ## Notes
 
 Sessions live one directory deep under the projects root. Anything nested below that is a

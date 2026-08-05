@@ -19,6 +19,8 @@ import { spawn } from 'node:child_process';
 import { listTranscripts, parseTranscript, displayName, decodeProjectDir } from './lib/scanner.mjs';
 import { IndexStore } from './lib/index-store.mjs';
 import { openSession, revealFolder, isWindows } from './lib/terminal.mjs';
+import { keep, restore, archiveSize, archivePathFor, currentRetentionDays, setRetentionDays, FOREVER }
+  from './lib/archive.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -41,10 +43,11 @@ function defaultSupportDir(home, env) {
 
 /// Indexes every transcript that changed since last time. Unchanged files are skipped on
 /// (size, mtime), so a rescan over thousands of sessions costs almost nothing.
-export async function reindex(store, projectsRoot, onProgress = () => {}) {
+export async function reindex(store, projectsRoot, onProgress = () => {}, supportDir = null) {
   const found = await listTranscripts(projectsRoot);
   const known = store.fingerprints();
   let indexed = 0;
+  let archived = 0;
 
   for (const [i, file] of found.entries()) {
     const seen = known.get(file.filePath);
@@ -53,11 +56,20 @@ export async function reindex(store, projectsRoot, onProgress = () => {}) {
       const meta = await parseTranscript(file.filePath);
       store.upsert({ ...meta, fileSize: file.size, fileMtime: file.mtime }, file.projectId);
       indexed += 1;
+      // Kept before anything else can remove it: a search tool whose corpus evaporates
+      // after thirty days is not a search tool.
+      if (supportDir && await keep(supportDir, file.filePath, file.projectId, meta.sessionId)) {
+        archived += 1;
+      }
     } catch { /* a transcript being written right now can be unreadable for a moment */ }
     if (i % 200 === 0) onProgress(i, found.length);
   }
-  const removed = store.removeMissing(found.map((f) => f.filePath));
-  return { total: found.length, indexed, removed };
+  // A transcript that has left ~/.claude/projects is not gone from Sift: the row stays and
+  // points at the archived copy.
+  const vanished = supportDir
+    ? store.repointMissing(found.map((f) => f.filePath), (p, s) => archivePathFor(supportDir, p, s))
+    : store.removeMissing(found.map((f) => f.filePath));
+  return { total: found.length, indexed, archived, vanished };
 }
 
 function json(res, body, status = 200) {
@@ -124,10 +136,24 @@ export function createApp(store, cfg) {
         const body = await readBody(req);
         const row = store.get(body.id);
         if (!row) return json(res, { error: 'not found' }, 404);
+        // `claude --resume` looks for the transcript on disk, so a session Claude Code has
+        // cleaned up has to be put back before it can be resumed.
+        await restore(cfg.supportDir, cfg.projectsRoot, row.projectId, row.sessionId);
         const how = openSession({
           cwd: row.cwd, sessionId: row.sessionId, claude: cfg.claude,
         });
         return json(res, { ok: true, ...how });
+      }
+
+      if (url.pathname === '/api/retention') {
+        if (req.method === 'POST') {
+          await setRetentionDays(FOREVER);
+          return json(res, { days: FOREVER, ...(await archiveSize(cfg.supportDir)) });
+        }
+        return json(res, {
+          days: await currentRetentionDays(),
+          ...(await archiveSize(cfg.supportDir)),
+        });
       }
 
       if (url.pathname === '/api/reveal' && req.method === 'POST') {
@@ -138,7 +164,7 @@ export function createApp(store, cfg) {
       }
 
       if (url.pathname === '/api/rescan' && req.method === 'POST') {
-        const result = await reindex(store, cfg.projectsRoot);
+        const result = await reindex(store, cfg.projectsRoot, () => {}, cfg.supportDir);
         return json(res, result);
       }
 
@@ -199,8 +225,12 @@ export async function main() {
   const started = Date.now();
   const result = await reindex(store, cfg.projectsRoot, (done, total) => {
     process.stdout.write(`\r  indexing ${done}/${total}`);
-  });
+  }, cfg.supportDir);
   process.stdout.write(`\r  ${result.total} sessions, ${result.indexed} updated in ${Date.now() - started} ms\n`);
+  const retention = await currentRetentionDays();
+  if (retention < 3650) {
+    process.stdout.write(`  Claude Code removes transcripts after ${retention} days; Sift keeps its own copy\n`);
+  }
 
   const server = createServer(createApp(store, cfg));
   server.listen(cfg.port, '127.0.0.1', () => {

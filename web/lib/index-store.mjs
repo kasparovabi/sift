@@ -1,5 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, existsSync } from 'node:fs';
 import { dirname } from 'node:path';
 
 /// The same shape the macOS app keeps: a session table plus an FTS5 mirror, with the
@@ -21,7 +21,8 @@ export class IndexStore {
         cwd TEXT, gitBranch TEXT, title TEXT, firstMessage TEXT, entrypoint TEXT,
         version TEXT, startedAt INTEGER, lastActivity INTEGER,
         messageCount INTEGER NOT NULL DEFAULT 0, toolCallCount INTEGER NOT NULL DEFAULT 0,
-        fileSize INTEGER NOT NULL, fileMtime INTEGER NOT NULL
+        fileSize INTEGER NOT NULL, fileMtime INTEGER NOT NULL,
+        archived INTEGER NOT NULL DEFAULT 0
       );
       CREATE INDEX IF NOT EXISTS session_project ON session(projectId);
       CREATE INDEX IF NOT EXISTS session_activity ON session(lastActivity);
@@ -58,6 +59,28 @@ export class IndexStore {
     this.db.prepare('DELETE FROM session_ft WHERE sessionId = ?').run(row.sessionId);
     this.db.prepare('INSERT INTO session_ft(sessionId, title, firstMessage, fullText) VALUES (?,?,?,?)')
       .run(row.sessionId, row.title ?? '', row.firstMessage ?? '', row.fullText ?? '');
+  }
+
+  /// A transcript that has left ~/.claude/projects is not necessarily gone: if it was
+  /// archived, the row survives pointing at the archived copy. Only a session with no
+  /// archived copy is dropped. Returns how many rows moved to the archive.
+  repointMissing(presentPaths, archivePathFor) {
+    const present = new Set(presentPaths);
+    const rows = this.db.prepare('SELECT sessionId, projectId, filePath FROM session').all();
+    let repointed = 0;
+    for (const r of rows) {
+      if (present.has(r.filePath)) continue;
+      const archived = archivePathFor(r.projectId, r.sessionId);
+      if (existsSync(archived)) {
+        this.db.prepare('UPDATE session SET filePath = ?, archived = 1 WHERE sessionId = ?')
+          .run(archived, r.sessionId);
+        repointed += 1;
+        continue;
+      }
+      this.db.prepare('DELETE FROM session_ft WHERE sessionId = ?').run(r.sessionId);
+      this.db.prepare('DELETE FROM session WHERE sessionId = ?').run(r.sessionId);
+    }
+    return repointed;
   }
 
   removeMissing(presentPaths) {

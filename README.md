@@ -107,17 +107,22 @@ WebGPU shader the header image was rendered from: open it, and it draws live.
 
 ## Windows
 
-`windows/` is a native Windows app: WPF on .NET 8, one `Sift.exe` with no runtime to install
-first. SwiftUI does not exist on Windows, so it is a separate implementation rather than a
-port, reading the same transcripts and keeping the same kind of FTS5 index.
+`windows-winui/` is a native Windows app: WinUI 3 on the Windows App SDK, with the Fluent
+look that comes with it — Mica, the system title bar, real Fluent controls. SwiftUI does not
+exist on Windows, so it is a separate implementation rather than a port, reading the same
+transcripts and keeping the same kind of FTS5 index.
 
 ```powershell
-dotnet publish windows\Sift\Sift.csproj -c Release -r win-x64 -o publish
-.\publish\Sift.exe
+dotnet publish windows-winui\SiftWinUI.csproj -c Release -r win-x64 -o publish
+.\publish\SiftWinUI.exe
 ```
 
-Measured on 1,067 transcripts: about 20 seconds to index, queries under a millisecond,
-19.5 MB index. See [windows/README.md](windows/README.md).
+Nothing to install first: the runtime ships inside it. Measured on 1,067 transcripts: about
+20 seconds to index, queries under a millisecond, a 19.5 MB index.
+See [windows-winui/README.md](windows-winui/README.md).
+
+`windows/` holds an earlier WPF build of the same thing, kept until the WinUI one has been
+run on a real desktop.
 
 ## Linux, or a browser anywhere
 
@@ -129,6 +134,16 @@ node web/sift.mjs
 ```
 
 See [web/README.md](web/README.md).
+
+---
+
+## Unlimited retention
+
+Claude Code deletes transcripts older than `cleanupPeriodDays`, 30 by default. Sift keeps its
+own copy of every transcript it indexes, so a session Claude Code has since removed stays
+searchable and readable, and it offers to turn the cleanup off so the originals stay
+resumable too. Resuming an archived session puts the transcript back on disk first, because
+`claude --resume` looks for it there.
 
 ---
 

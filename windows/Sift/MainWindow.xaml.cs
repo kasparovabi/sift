@@ -4,7 +4,10 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using System.Windows.Interop;
 using System.Windows.Threading;
+using System.Runtime.InteropServices;
 using Sift.Core;
 
 namespace Sift;
@@ -48,6 +51,20 @@ public partial class MainWindow : Window
     // nothing until the constructor has finished wiring everything up.
     private bool _wired;
 
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
+
+    /// WPF does not paint the window frame, so on a dark palette the title bar stays light
+    /// and the app looks like two different programs stitched together.
+    private void MatchTitleBarToTheme()
+    {
+        var handle = new WindowInteropHelper(this).Handle;
+        if (handle == IntPtr.Zero) return;
+        var dark = ThemeManager.Current.Id != "paper" ? 1 : 0;
+        const int UseImmersiveDarkMode = 20;
+        DwmSetWindowAttribute(handle, UseImmersiveDarkMode, ref dark, sizeof(int));
+    }
+
     public MainWindow()
     {
         ThemeManager.Apply(ThemeManager.Named(ThemeManager.LoadSavedId()));
@@ -61,6 +78,7 @@ public partial class MainWindow : Window
         _debounce.Tick += (_, _) => { _debounce.Stop(); Refresh(); };
 
         _wired = true;
+        SourceInitialized += (_, _) => MatchTitleBarToTheme();
         Loaded += async (_, _) => await FirstIndex();
     }
 
@@ -73,6 +91,24 @@ public partial class MainWindow : Window
         StatusLine.Text = $"{result.Total} sessions · {_store.Projects().Count} projects";
         LoadProjects();
         Refresh();
+        if (App.ShotPath is { } path) await CaptureAndQuit(path);
+    }
+
+    private async Task CaptureAndQuit(string path)
+    {
+        if (_results.Count > 0) ResultsBox.SelectedIndex = 0;
+        UpdateLayout();
+        await Dispatcher.Yield(DispatcherPriority.ContextIdle);
+
+        var scale = 1.5;   // renders above 1x so small type stays legible in the file
+        var bitmap = new RenderTargetBitmap(
+            (int)(ActualWidth * scale), (int)(ActualHeight * scale), 96 * scale, 96 * scale,
+            PixelFormats.Pbgra32);
+        bitmap.Render(this);
+        var encoder = new PngBitmapEncoder();
+        encoder.Frames.Add(BitmapFrame.Create(bitmap));
+        using (var file = File.Create(path)) encoder.Save(file);
+        Application.Current.Shutdown();
     }
 
     private void LoadProjects()
@@ -201,6 +237,7 @@ public partial class MainWindow : Window
         ThemeManager.Apply(theme);
         ThemeManager.Save(theme.Id);
         FontFamily = new FontFamily(theme.FontFamily);
+        MatchTitleBarToTheme();
         if (ResultsBox.SelectedItem is ResultItem item) ShowSession(item.Hit);
     }
 

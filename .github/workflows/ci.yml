@@ -52,5 +52,9 @@ jobs:
           dotnet-version: '8.0.x'
       - name: Test
         run: dotnet test windows/Sift.Tests/Sift.Tests.csproj -c Release
-      - name: Publish a single executable
+      - name: Publish the WPF build
         run: dotnet publish windows/Sift/Sift.csproj -c Release -r win-x64 -o publish
+      - name: Install the WinUI 3 templates
+        run: dotnet new install Microsoft.WindowsAppSDK.WinUI.CSharp.Templates
+      - name: Publish the WinUI 3 build
+        run: dotnet publish windows-winui/SiftWinUI.csproj -c Release -r win-x64 -o publish-winui

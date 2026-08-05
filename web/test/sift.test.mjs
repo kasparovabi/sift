@@ -9,6 +9,8 @@ import { humanText, assistantText, parseTranscript, listTranscripts, decodeProje
 import { IndexStore, ftsQuery } from '../lib/index-store.mjs';
 import { quoteForShell, powershellCommand, posixScript } from '../lib/terminal.mjs';
 import { reindex, config } from '../sift.mjs';
+import { archiveSize, restore, archivePathFor } from '../lib/archive.mjs';
+import { existsSync } from 'node:fs';
 
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), 'sift-web-'));
@@ -104,14 +106,69 @@ test('a rescan neither duplicates nor re-reads unchanged files', async () => {
   await rm(root, { recursive: true, force: true });
 });
 
-test('a deleted transcript leaves the index', async () => {
+test('a deleted transcript leaves the index when nothing archived it', async () => {
   const { root, projects, dir } = await fixture();
   const store = new IndexStore(':memory:');
   await reindex(store, projects);
   await rm(join(dir, 's1.jsonl'));
   const result = await reindex(store, projects);
-  assert.equal(result.removed, 1);
+  assert.equal(result.vanished, 1);
   assert.equal(store.count(), 0);
+  store.close();
+  await rm(root, { recursive: true, force: true });
+});
+
+test('an archived transcript survives Claude Code deleting it', async () => {
+  const { root, projects, dir } = await fixture();
+  const support = join(root, 'support');
+  const store = new IndexStore(':memory:');
+
+  const first = await reindex(store, projects, () => {}, support);
+  assert.equal(first.archived, 1, 'indexing keeps a copy');
+
+  // Claude Code cleans the transcript up.
+  await rm(join(dir, 's1.jsonl'));
+
+  const second = await reindex(store, projects, () => {}, support);
+  assert.equal(second.vanished, 1, 'the row moved to the archive rather than being dropped');
+  assert.equal(store.count(), 1, 'the session is still in the index');
+
+  const hits = store.search({ query: 'pagination' });
+  assert.equal(hits.length, 1, 'and still searchable');
+  assert.equal(hits[0].archived, 1);
+  assert.ok(hits[0].filePath.includes('archive'), 'reading it now comes from the archive');
+  assert.ok(existsSync(hits[0].filePath));
+
+  const { files } = await archiveSize(support);
+  assert.equal(files, 1);
+  store.close();
+  await rm(root, { recursive: true, force: true });
+});
+
+test('a cleaned-up session can be put back so it resumes', async () => {
+  const { root, projects, dir } = await fixture();
+  const support = join(root, 'support');
+  const store = new IndexStore(':memory:');
+  await reindex(store, projects, () => {}, support);
+
+  const original = join(dir, 's1.jsonl');
+  await rm(original);
+  assert.equal(existsSync(original), false);
+
+  const restored = await restore(support, projects, '-Users-alex-code-orbit-api', 's1');
+  assert.equal(restored, original, 'claude --resume looks for it on disk, so it goes back');
+  assert.equal(existsSync(original), true);
+  store.close();
+  await rm(root, { recursive: true, force: true });
+});
+
+test('archiving twice does not copy twice', async () => {
+  const { root, projects } = await fixture();
+  const support = join(root, 'support');
+  const store = new IndexStore(':memory:');
+  await reindex(store, projects, () => {}, support);
+  const again = await reindex(store, projects, () => {}, support);
+  assert.equal(again.archived, 0, 'an unchanged transcript is already kept');
   store.close();
   await rm(root, { recursive: true, force: true });
 });
