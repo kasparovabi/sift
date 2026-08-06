@@ -300,6 +300,21 @@ catches up. Please open an issue with your `claude --version` when that happens.
 
 ---
 
+## Where help would land
+
+Search is lexical. It finds what you typed, which covers error strings and file names well
+and covers "I remember the idea, not the words" not at all. The part of semantic search that
+does not depend on a model is already in the repo, measured and tested; what is missing is
+storage, a backfill and hybrid ranking, on three platforms.
+[Issue #1](https://github.com/kasparovabi/sift/issues/1) has the measurements, including what
+was tried and did not hold up, so nobody has to repeat that.
+
+More agents is the other open direction. Claude Code and Codex are read today. opencode,
+Gemini CLI and Cursor each write their history somewhere different, and each is its own
+reader.
+
+---
+
 ## Status
 
 One person maintains this, in spare time, on one Mac. It has been used daily against a
