@@ -42,6 +42,20 @@ public partial class App : Application
     public App()
     {
         InitializeComponent();
+        // A XAML or startup fault fails the process fast, with nothing on stderr and nothing
+        // in the event log beyond an address. Writing it down is the difference between a
+        // fixable report and "it just closes".
+        UnhandledException += (_, e) =>
+        {
+            try
+            {
+                System.IO.Directory.CreateDirectory(Core.AppPaths.SupportDir);
+                System.IO.File.WriteAllText(
+                    System.IO.Path.Combine(Core.AppPaths.SupportDir, "crash.txt"),
+                    e.Exception.ToString());
+            }
+            catch { }
+        };
     }
 
     /// <summary>

@@ -55,8 +55,9 @@ Indexing, search, and resuming all read local files and write a local database. 
 that path talks to the network.
 
 **Knowledge extraction is the exception, and it is off until you turn it on** in
-Settings → Knowledge. Once on, each finished session is sent to `claude -p` under your own
-Claude account so facts can be pulled out of it. Two things follow from that:
+Settings → Knowledge on macOS, or on the Knowledge page on Windows. Once on, each finished
+session is sent to `claude -p` under your own Claude account so facts can be pulled out of
+it. Two things follow from that:
 
 - Transcript text goes over the network to Anthropic, exactly as if you had pasted it into
   Claude yourself. Up to 60,000 characters per session.

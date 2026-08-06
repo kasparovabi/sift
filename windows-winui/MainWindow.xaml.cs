@@ -21,7 +21,7 @@ public sealed partial class MainWindow : Window
 
         AppWindow.SetIcon("Assets/AppIcon.ico");
 
-        // Navigate the root frame to the main page on startup.
-        RootFrame.Navigate(typeof(MainPage));
+        try { RootFrame.Navigate(typeof(MainPage)); }
+        catch (Exception error) { MainPage.Report(error); throw; }
     }
 }

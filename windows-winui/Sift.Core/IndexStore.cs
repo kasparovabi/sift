@@ -143,14 +143,24 @@ public sealed class IndexStore : IDisposable
     public List<ProjectRow> Projects()
     {
         var counts = new Dictionary<string, (int Count, long? Last)>(StringComparer.OrdinalIgnoreCase);
+        // A session with no cwd falls back to a sibling's, because the encoded directory name
+        // cannot be decoded back into a path: every separator became a dash, and so did any
+        // dash already in the name. Without this, two sessions missing a cwd show up as a
+        // second copy of a project that is already listed.
         using (var cmd = Cmd("""
-            SELECT COALESCE(cwd, projectId) AS path, count(*), max(lastActivity)
-            FROM session GROUP BY path
+            SELECT COALESCE(
+                     s.cwd,
+                     (SELECT o.cwd FROM session o
+                       WHERE o.projectId = s.projectId AND o.cwd IS NOT NULL LIMIT 1),
+                     s.projectId) AS path,
+                   count(*), max(s.lastActivity)
+            FROM session s GROUP BY path
             """))
         using (var r = cmd.ExecuteReader())
             while (r.Read())
                 counts[r.GetString(0)] = (r.GetInt32(1), r.IsDBNull(2) ? null : r.GetInt64(2));
 
+        counts = FoldOneShotSiblings(counts);
         var roots = Roots(counts.Keys);
         var rolled = new Dictionary<string, (int Count, long? Last)>(StringComparer.OrdinalIgnoreCase);
         foreach (var (path, value) in counts)
@@ -168,6 +178,62 @@ public sealed class IndexStore : IDisposable
             .OrderByDescending(p => p.Count)
             .ThenByDescending(p => p.LastActivity ?? 0)
             .ToList();
+    }
+
+    /// Rolling up into an ancestor only works when that ancestor ran a session of its own.
+    /// A harness gives every run a fresh directory and never works in the parent, so hundreds
+    /// of one-session folders stayed separate: siblings with no common row to fold into.
+    ///
+    /// One session per directory, over and over, is the signature of directories a program
+    /// made rather than a person. When most of a parent's children look like that, the parent
+    /// becomes the project and the children disappear into it. A folder of real projects is
+    /// left alone, because those hold more than one session each. The cost of being wrong is
+    /// that a handful of genuinely new projects share one entry until they are worked in
+    /// twice, which beats a sidebar with seven hundred rows in it.
+    internal static Dictionary<string, (int Count, long? Last)> FoldOneShotSiblings(
+        Dictionary<string, (int Count, long? Last)> counts)
+    {
+        const int minimumSiblings = 6;
+
+        var folded = new Dictionary<string, (int Count, long? Last)>(counts, StringComparer.OrdinalIgnoreCase);
+        for (var pass = 0; pass < 8; pass++)
+        {
+            var groups = folded.Keys
+                .Select(path => (Path: path, Parent: Parent(path)))
+                .Where(pair => pair.Parent is not null)
+                .GroupBy(pair => pair.Parent!, StringComparer.OrdinalIgnoreCase)
+                .Where(group => group.Count() >= minimumSiblings &&
+                                group.Count(pair => folded[pair.Path].Count == 1) * 4 >= group.Count() * 3)
+                .ToList();
+            if (groups.Count == 0) break;
+
+            foreach (var group in groups)
+            {
+                folded.TryGetValue(group.Key, out var merged);
+                foreach (var (path, _) in group)
+                {
+                    var child = folded[path];
+                    folded.Remove(path);
+                    merged = (merged.Count + child.Count,
+                              merged.Last is null || (child.Last is not null && child.Last > merged.Last)
+                                  ? child.Last : merged.Last);
+                }
+                folded[group.Key] = merged;
+            }
+        }
+        return folded;
+    }
+
+    private static readonly char[] Separators = { '/', '\\' };
+
+    /// The containing directory, or null at a drive or filesystem root.
+    internal static string? Parent(string path)
+    {
+        var trimmed = path.TrimEnd(Separators);
+        var cut = trimmed.LastIndexOfAny(Separators);
+        if (cut <= 0) return null;
+        var parent = trimmed[..cut];
+        return parent.Length < 2 || parent.EndsWith(':') ? null : parent;
     }
 
     /// A path is a root when no other path in the set is an ancestor of it.

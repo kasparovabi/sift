@@ -36,6 +36,17 @@ public sealed class LoopItem
     public required string Where { get; init; }
 }
 
+public sealed class AtomItem
+{
+    public required Atom Atom { get; init; }
+    public string Statement => Atom.Statement;
+    public string Kind => Atom.Type.Label();
+    public string Meta => string.Join("   ·   ", new[]
+    {
+        Atom.Project, $"importance {Atom.Importance}",
+    }.Where(s => !string.IsNullOrWhiteSpace(s)));
+}
+
 public sealed class TurnItem
 {
     public required string Who { get; init; }
@@ -50,14 +61,22 @@ public sealed partial class MainPage : Page
     private readonly DispatcherTimer _debounce = new() { Interval = TimeSpan.FromMilliseconds(120) };
     private readonly LoopStore _loops = new(Path.Combine(AppPaths.SupportDir, "loops.sqlite"));
     private readonly Dictionary<string, CancellationTokenSource> _running = new();
+    /// Opened on the first visit to Knowledge rather than at startup: a second database is
+    /// work nobody asked for when the page may never be opened.
+    private BrainStore? _brainStore;
+    private BrainStore Brain => _brainStore ??= new BrainStore(Path.Combine(AppPaths.SupportDir, "brain.sqlite"));
+    private readonly ObservableCollection<AtomItem> _atoms = new();
+    private readonly DispatcherTimer _brainDebounce = new() { Interval = TimeSpan.FromMilliseconds(120) };
+    private readonly DispatcherTimer _ingest = new() { Interval = TimeSpan.FromSeconds(90) };
+    private readonly CancellationTokenSource _ingestStop = new();
+    private BrainIngester? _ingester;
+    private bool _ingesting;
+    private List<NodePosition> _nodes = [];
+    private List<GraphEdge> _edges = [];
     private CancellationTokenSource? _taskRun;
     private string? _projectFilter;
     private bool _todayOnly;
     private bool _ready;
-    /// Projects are ranked by how much work is in them; the long tail of one-session
-    /// directories a batch run leaves behind sits behind this until asked for.
-    private bool _showAllProjects;
-    private const int VisibleProjects = 12;
 
     public MainPage()
     {
@@ -69,11 +88,30 @@ public sealed partial class MainPage : Page
         ThemeService.Apply(saved, this);
         AppearancePicker.SelectedItem = saved;
 
+        AtomList.ItemsSource = _atoms;
         _debounce.Tick += (_, _) => { _debounce.Stop(); Refresh(); };
+        _brainDebounce.Tick += (_, _) => { _brainDebounce.Stop(); RefreshAtoms(); };
+        _ingest.Tick += async (_, _) => await IngestSome();
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         TaskFolder.Text = home;
         LoopFolder.Text = home;
-        Loaded += async (_, _) => await FirstIndex();
+        Loaded += async (_, _) =>
+        {
+            try { await FirstIndex(); }
+            catch (Exception error) { Report(error); throw; }
+        };
+    }
+
+    /// A fault during startup fails the process with nothing on stderr and an address in the
+    /// event log. Writing it down turns "it just closes" into something anyone can report.
+    internal static void Report(Exception error)
+    {
+        try
+        {
+            Directory.CreateDirectory(AppPaths.SupportDir);
+            File.WriteAllText(Path.Combine(AppPaths.SupportDir, "crash.txt"), error.ToString());
+        }
+        catch { }
     }
 
     private async Task FirstIndex()
@@ -121,7 +159,137 @@ public sealed partial class MainPage : Page
         }
     }
 
-    /// The pane lists the two saved views first, then one entry per project.
+    private void RefreshBrain()
+    {
+        var on = Preferences.KnowledgeExtractionEnabled;
+        BrainConsent.IsOpen = true;
+        BrainConsent.Title = on ? "Extraction is on" : "Extraction is off";
+        BrainConsent.Severity = on ? InfoBarSeverity.Success : InfoBarSeverity.Informational;
+        BrainConsent.Message = on
+            ? "Finished sessions are sent to claude under your own account, a couple at a time, " +
+              "and what comes back is stored locally. Turning it off stops that immediately."
+            : "Sift can read your finished sessions and pull durable facts out of them. Doing " +
+              "that sends transcript text to Claude under your own account and spends your " +
+              "tokens, so it stays off until you say otherwise.";
+        BrainConsent.ActionButton = new Button
+        {
+            Content = on ? "Turn extraction off" : "Turn extraction on",
+        };
+        ((Button)BrainConsent.ActionButton).Click += ToggleExtraction;
+
+        var atoms = Brain.AtomCount();
+        var entities = Brain.EntityCount();
+        BrainSubtitle.Text = atoms == 0
+            ? "Durable facts pulled out of finished sessions, and the things they are about."
+            : $"{atoms} facts about {entities} things, from your finished sessions.";
+
+        RefreshAtoms();
+        RefreshGraph();
+        if (on) _ingest.Start();
+    }
+
+    private void RefreshAtoms()
+    {
+        _atoms.Clear();
+        foreach (var atom in Brain.Atoms(BrainSearch.Text)) _atoms.Add(new AtomItem { Atom = atom });
+    }
+
+    private void BrainSearchChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)
+    {
+        if (args.Reason != AutoSuggestionBoxTextChangeReason.UserInput) return;
+        _brainDebounce.Stop();
+        _brainDebounce.Start();
+    }
+
+    private void ToggleExtraction(object sender, RoutedEventArgs e)
+    {
+        Preferences.KnowledgeExtractionEnabled = !Preferences.KnowledgeExtractionEnabled;
+        if (!Preferences.KnowledgeExtractionEnabled) _ingest.Stop();
+        RefreshBrain();
+    }
+
+    /// Runs a couple of sessions per tick while the app is open. Extraction spends tokens, so
+    /// a backlog of thousands drains slowly and visibly rather than all at once.
+    private async Task IngestSome()
+    {
+        if (_ingesting || !Preferences.KnowledgeExtractionEnabled) return;
+        _ingesting = true;
+        try
+        {
+            _ingester ??= new BrainIngester(Brain, _store, new Extractor(AppPaths.ClaudeCommand));
+            var outcome = await _ingester.Tick(_ingestStop.Token);
+            if (outcome.Atoms > 0 && BrainView.Visibility == Visibility.Visible) RefreshBrain();
+        }
+        catch (OperationCanceledException) { }
+        finally { _ingesting = false; }
+    }
+
+    private void RefreshGraph()
+    {
+        var entities = Brain.Entities();
+        _edges = Brain.Edges(entities.Select(e => e.Id));
+        _nodes = GraphLayout.Compute(entities, _edges);
+        GraphEmpty.Visibility = _nodes.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        DrawGraph();
+    }
+
+    private void GraphResized(object sender, SizeChangedEventArgs e) => DrawGraph();
+
+    /// Edges first, then nodes, then labels, so nothing is drawn over a name.
+    private void DrawGraph()
+    {
+        GraphCanvas.Children.Clear();
+        var width = GraphCanvas.ActualWidth;
+        var height = GraphCanvas.ActualHeight;
+        if (_nodes.Count == 0 || width < 40 || height < 40) return;
+
+        var placed = _nodes.ToDictionary(n => n.Id, n => (X: n.X * width, Y: n.Y * height));
+        var line = Resource("TextFillColorTertiaryBrush", Microsoft.UI.Colors.Gray);
+        var fill = Resource("AccentFillColorDefaultBrush", Microsoft.UI.Colors.SteelBlue);
+        var text = Resource("TextFillColorPrimaryBrush", Microsoft.UI.Colors.White);
+
+        foreach (var edge in _edges)
+        {
+            if (!placed.TryGetValue(edge.FromId, out var a)) continue;
+            if (!placed.TryGetValue(edge.ToId, out var b)) continue;
+            GraphCanvas.Children.Add(new Microsoft.UI.Xaml.Shapes.Line
+            {
+                X1 = a.X, Y1 = a.Y, X2 = b.X, Y2 = b.Y,
+                Stroke = line, StrokeThickness = 1, Opacity = 0.35,
+            });
+        }
+
+        foreach (var node in _nodes)
+        {
+            var point = placed[node.Id];
+            var diameter = 10 + Math.Min(node.Weight, 14) * 1.6;
+            var dot = new Microsoft.UI.Xaml.Shapes.Ellipse
+            {
+                Width = diameter, Height = diameter, Fill = fill,
+            };
+            Canvas.SetLeft(dot, point.X - diameter / 2);
+            Canvas.SetTop(dot, point.Y - diameter / 2);
+            ToolTipService.SetToolTip(dot, $"{node.Label} — {node.Weight} facts");
+            GraphCanvas.Children.Add(dot);
+
+            var label = new TextBlock
+            {
+                Text = node.Label, FontSize = 11, Foreground = text, Opacity = 0.85,
+                TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 120,
+            };
+            Canvas.SetLeft(label, point.X + diameter / 2 + 4);
+            Canvas.SetTop(label, point.Y - 8);
+            GraphCanvas.Children.Add(label);
+        }
+    }
+
+    private Brush Resource(string key, Windows.UI.Color fallback) =>
+        Application.Current.Resources.TryGetValue(key, out var value) && value is Brush brush
+            ? brush : new SolidColorBrush(fallback);
+
+    /// The pane lists the two saved views, then the tools, then one entry per project. The
+    /// tools sit above the projects because a long project list would otherwise push them
+    /// off the bottom, where nobody found them.
     private void BuildSources()
     {
         Nav.MenuItems.Clear();
@@ -135,6 +303,24 @@ public sealed partial class MainPage : Page
             Content = "Today", Tag = "today",
             Icon = new FontIcon { Glyph = "" },
         });
+        Nav.MenuItems.Add(new NavigationViewItemSeparator());
+        Nav.MenuItems.Add(new NavigationViewItemHeader { Content = "Tools" });
+        Nav.MenuItems.Add(new NavigationViewItem
+        {
+            Content = "Quick task", Tag = "quick",
+            Icon = new FontIcon { Glyph = "" },
+        });
+        Nav.MenuItems.Add(new NavigationViewItem
+        {
+            Content = "Loops", Tag = "loops",
+            Icon = new FontIcon { Glyph = "" },
+        });
+        Nav.MenuItems.Add(new NavigationViewItem
+        {
+            Content = "Knowledge", Tag = "brain",
+            Icon = new FontIcon { Glyph = "" },
+        });
+
         Nav.MenuItems.Add(new NavigationViewItemSeparator());
         Nav.MenuItems.Add(new NavigationViewItemHeader { Content = "Projects" });
 
@@ -156,19 +342,15 @@ public sealed partial class MainPage : Page
     {
         if (args.SelectedItem is not NavigationViewItem item || item.Tag is not string tag) return;
 
-        if (tag is "more" or "less")
-        {
-            _showAllProjects = tag == "more";
-            BuildSources();
-            return;
-        }
-
-        SessionsView.Visibility = tag is "quick" or "loops" ? Visibility.Collapsed : Visibility.Visible;
+        var isTool = tag is "quick" or "loops" or "brain";
+        SessionsView.Visibility = isTool ? Visibility.Collapsed : Visibility.Visible;
         QuickView.Visibility = tag == "quick" ? Visibility.Visible : Visibility.Collapsed;
         LoopsView.Visibility = tag == "loops" ? Visibility.Visible : Visibility.Collapsed;
-        if (tag is "quick" or "loops")
+        BrainView.Visibility = tag == "brain" ? Visibility.Visible : Visibility.Collapsed;
+        if (isTool)
         {
             if (tag == "loops") RefreshLoops();
+            if (tag == "brain") RefreshBrain();
             return;
         }
 
