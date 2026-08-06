@@ -16,7 +16,7 @@
   <mp:PhoneIdentity PhoneProductId="85340392-1054-4967-B091-0EE2AC9F5892" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
 
   <Properties>
-    <DisplayName>SiftWinUI</DisplayName>
+    <DisplayName>Sift</DisplayName>
     <PublisherDisplayName>AppPublisher</PublisherDisplayName>
     <Logo>Assets\StoreLogo.png</Logo>
   </Properties>

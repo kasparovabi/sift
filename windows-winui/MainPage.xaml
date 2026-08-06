@@ -33,9 +33,42 @@
                 </StackPanel>
             </Border>
         </DataTemplate>
+
+        <DataTemplate x:Key="LoopTemplate" x:DataType="local:LoopItem">
+            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"
+                    CornerRadius="8" Padding="14,12" Margin="0,0,0,8">
+                <Grid ColumnSpacing="10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="{x:Bind Title}" Style="{StaticResource BodyStrongTextBlockStyle}"
+                                   TextWrapping="Wrap" />
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Border Background="{ThemeResource AccentFillColorDefaultBrush}"
+                                    CornerRadius="10" Padding="9,2">
+                                <TextBlock Text="{x:Bind Status}" FontSize="11"
+                                           Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
+                            </Border>
+                            <TextBlock Text="{x:Bind Where}" Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4"
+                                VerticalAlignment="Top">
+                        <Button Content="Run" Click="RunLoop" Tag="{x:Bind Id}" />
+                        <Button Content="Stop" Click="StopLoop" Tag="{x:Bind Id}" />
+                        <Button Content="Delete" Click="DeleteLoop" Tag="{x:Bind Id}" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </DataTemplate>
     </Page.Resources>
 
-    <NavigationView x:Name="Nav" PaneDisplayMode="Left" OpenPaneLength="260"
+    <NavigationView x:Name="Nav" PaneDisplayMode="Left" OpenPaneLength="270"
                     IsBackButtonVisible="Collapsed" IsSettingsVisible="False"
                     SelectionChanged="SourceSelected">
 
@@ -46,12 +79,21 @@
         </NavigationView.AutoSuggestBox>
 
         <NavigationView.PaneFooter>
-            <StackPanel Padding="14,8,14,14" Spacing="8">
+            <StackPanel Padding="14,6,14,14" Spacing="8">
                 <ComboBox x:Name="AppearancePicker" Header="Appearance"
                           HorizontalAlignment="Stretch" DisplayMemberPath="Name"
                           SelectionChanged="AppearanceChanged" />
                 <Button x:Name="RescanButton" Content="Rescan" Click="Rescan"
                         HorizontalAlignment="Stretch" />
+                <InfoBar x:Name="RetentionBar" IsOpen="False" IsClosable="False" Severity="Warning"
+                         Title="Claude Code deletes old sessions">
+                    <InfoBar.ActionButton>
+                        <Button Content="Keep them forever" Click="DisableCleanup" />
+                    </InfoBar.ActionButton>
+                </InfoBar>
+                <TextBlock x:Name="ArchiveLine" TextWrapping="Wrap"
+                           Style="{StaticResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
                 <TextBlock x:Name="StatusLine" TextWrapping="Wrap"
                            Style="{StaticResource CaptionTextBlockStyle}"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
@@ -59,33 +101,117 @@
         </NavigationView.PaneFooter>
 
         <Grid>
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="400" />
-                <ColumnDefinition Width="*" MinWidth="360" />
-            </Grid.ColumnDefinitions>
+            <!-- Sessions -->
+            <Grid x:Name="SessionsView">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="400" />
+                    <ColumnDefinition Width="*" MinWidth="360" />
+                </Grid.ColumnDefinitions>
 
-            <Grid Grid.Column="0" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
-                  BorderThickness="0,0,1,0">
-                <ListView x:Name="ResultsBox" ItemTemplate="{StaticResource ResultTemplate}"
-                          SelectionChanged="SessionSelected" Padding="6,0,6,12"
-                          ScrollViewer.HorizontalScrollMode="Disabled" />
-                <StackPanel x:Name="EmptyResults" Visibility="Collapsed" Spacing="6"
-                            VerticalAlignment="Center" HorizontalAlignment="Center">
-                    <FontIcon Glyph="&#xE721;" FontSize="26"
-                              Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
-                    <TextBlock Text="Nothing matches." HorizontalAlignment="Center"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                </StackPanel>
-                <ProgressRing x:Name="Busy" IsActive="True" Width="28" Height="28" />
+                <Grid Grid.Column="0" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
+                      BorderThickness="0,0,1,0">
+                    <ListView x:Name="ResultsBox" ItemTemplate="{StaticResource ResultTemplate}"
+                              SelectionChanged="SessionSelected" Padding="6,0,6,12"
+                              ScrollViewer.HorizontalScrollMode="Disabled" />
+                    <StackPanel x:Name="EmptyResults" Visibility="Collapsed" Spacing="6"
+                                VerticalAlignment="Center" HorizontalAlignment="Center">
+                        <FontIcon Glyph="&#xE721;" FontSize="26"
+                                  Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                        <TextBlock Text="Nothing matches." HorizontalAlignment="Center"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
+                    <ProgressRing x:Name="Busy" IsActive="True" Width="28" Height="28" />
+                </Grid>
+
+                <ScrollViewer Grid.Column="1" Padding="28,18,24,24">
+                    <StackPanel x:Name="Detail" Spacing="0">
+                        <TextBlock Text="Pick a session to read it."
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   Margin="0,40,0,0" />
+                    </StackPanel>
+                </ScrollViewer>
             </Grid>
 
-            <ScrollViewer Grid.Column="1" Padding="28,18,24,24">
-                <StackPanel x:Name="Detail" Spacing="0">
-                    <TextBlock Text="Pick a session to read it."
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                               Margin="0,40,0,0" />
+            <!-- Quick task -->
+            <Grid x:Name="QuickView" Visibility="Collapsed" Padding="28,18,24,24" RowSpacing="14">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <StackPanel Spacing="10">
+                    <TextBlock Text="Quick task" Style="{StaticResource TitleTextBlockStyle}" />
+                    <TextBlock Text="Run a one-off claude -p in a folder, without opening a terminal."
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                    <TextBox x:Name="TaskFolder" Header="Folder" />
+                    <TextBox x:Name="TaskPrompt" Header="What should it do?" Height="110"
+                             AcceptsReturn="True" TextWrapping="Wrap"
+                             ScrollViewer.VerticalScrollBarVisibility="Auto" />
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button x:Name="RunTask" Content="Run" Click="RunQuickTask"
+                                Style="{StaticResource AccentButtonStyle}" />
+                        <Button x:Name="StopTask" Content="Stop" Click="StopQuickTask" IsEnabled="False" />
+                        <ProgressRing x:Name="TaskBusy" IsActive="False" Width="20" Height="20"
+                                      VerticalAlignment="Center" />
+                    </StackPanel>
                 </StackPanel>
-            </ScrollViewer>
+                <Border Grid.Row="1" CornerRadius="8" Padding="14"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                    <ScrollViewer x:Name="TaskScroll">
+                        <TextBlock x:Name="TaskOutput" TextWrapping="Wrap" IsTextSelectionEnabled="True"
+                                   FontFamily="Cascadia Mono, Consolas" FontSize="12" />
+                    </ScrollViewer>
+                </Border>
+            </Grid>
+
+            <!-- Loops -->
+            <Grid x:Name="LoopsView" Visibility="Collapsed" Padding="28,18,24,24" RowSpacing="14">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <StackPanel Spacing="10">
+                    <TextBlock Text="Loops" Style="{StaticResource TitleTextBlockStyle}" />
+                    <TextBlock TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               Text="A maker does the work, a separate checker grades it against your definition of done, and it repeats until it passes or runs out of attempts." />
+                    <Expander Header="New loop" HorizontalAlignment="Stretch">
+                        <StackPanel Spacing="10" Padding="0,8" Width="460" HorizontalAlignment="Left">
+                            <TextBox x:Name="LoopTitle" Header="Title" />
+                            <TextBox x:Name="LoopFolder" Header="Folder" />
+                            <TextBox x:Name="LoopPrompt" Header="What should the maker do?" Height="80"
+                                     AcceptsReturn="True" TextWrapping="Wrap" />
+                            <ComboBox x:Name="LoopCheckKind" Header="Checked by" SelectedIndex="0"
+                                      HorizontalAlignment="Stretch">
+                                <ComboBoxItem Content="An agent" />
+                                <ComboBoxItem Content="A command (exit 0 means done)" />
+                            </ComboBox>
+                            <TextBox x:Name="LoopDoneWhen" Header="Definition of done" Height="60"
+                                     AcceptsReturn="True" TextWrapping="Wrap" />
+                            <NumberBox x:Name="LoopPasses" Header="Attempts" Value="3" Minimum="1"
+                                       Maximum="10" SpinButtonPlacementMode="Compact" />
+                            <Button Content="Add loop" Click="AddLoop"
+                                    Style="{StaticResource AccentButtonStyle}" />
+                        </StackPanel>
+                    </Expander>
+                </StackPanel>
+                <Grid Grid.Row="1" ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <ScrollViewer>
+                        <ItemsControl x:Name="LoopList" ItemTemplate="{StaticResource LoopTemplate}" />
+                    </ScrollViewer>
+                    <Border Grid.Column="1" CornerRadius="8" Padding="14"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                        <ScrollViewer x:Name="LoopLogScroll">
+                            <TextBlock x:Name="LoopLog" TextWrapping="Wrap" IsTextSelectionEnabled="True"
+                                       FontFamily="Cascadia Mono, Consolas" FontSize="12" />
+                        </ScrollViewer>
+                    </Border>
+                </Grid>
+            </Grid>
         </Grid>
     </NavigationView>
 </Page>

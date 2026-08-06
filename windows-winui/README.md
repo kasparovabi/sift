@@ -16,8 +16,10 @@ NavigationView, and real Fluent controls rather than hand-drawn approximations.
 
 ```powershell
 dotnet publish SiftWinUI.csproj -c Release -r win-x64 -o publish
-.\publish\SiftWinUI.exe
+.\publish\Sift.exe
 ```
+
+Republishing over a running copy fails with the DLL locked, so close the app first.
 
 About 265 MB published, because the Windows App SDK and the .NET runtime ship inside it.
 For a much smaller build on a machine that already has both, drop
@@ -42,8 +44,18 @@ BuildAndRun workflow uses. Note the package id is `Microsoft.WinAppCli`, not the
   injected reminders left out.
 - **Open in terminal** resumes it in its own working directory through PowerShell, because
   `claude` on Windows is a `.ps1` that cmd cannot run.
+- **Quick task** runs a one-off `claude -p` in a folder and streams the answer back. Stop
+  kills the process rather than just looking away from it.
+- **Loops**: a maker does the work, a separate checker grades it against your definition of
+  done, and it repeats until it passes or runs out of attempts. The checker can be an agent
+  or a command whose exit code decides. Every attempt is kept as evidence.
 - **Keeps your sessions.** See below.
 - **Five appearances**, remembered between runs.
+
+The project list is ordered by how much work is in each project, not by recency, and the
+long tail is folded behind "Show all". A throwaway run leaves a project directory behind
+exactly like a real one does: on the machine this was built against, 745 of 753 projects
+held a single session each, which made a recency-ordered list useless.
 
 ## Unlimited retention
 

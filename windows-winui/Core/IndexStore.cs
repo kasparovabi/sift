@@ -131,13 +131,18 @@ public sealed class IndexStore : IDisposable
         return Convert.ToInt32(cmd.ExecuteScalar());
     }
 
+    /// Ordered by how much work is in them, not by recency. A throwaway run leaves a
+    /// project directory behind exactly like a real one does, and on a machine that has
+    /// done a batch of them the recent end of the list is nothing but throwaways: 745 of
+    /// 753 projects on the machine this was built against held a single session each.
     public List<ProjectRow> Projects()
     {
         var rows = new List<ProjectRow>();
         using var cmd = Cmd("""
             SELECT projectId, count(*), max(lastActivity),
                    (SELECT cwd FROM session s2 WHERE s2.projectId = s1.projectId AND cwd IS NOT NULL LIMIT 1)
-            FROM session s1 GROUP BY projectId ORDER BY max(lastActivity) DESC
+            FROM session s1 GROUP BY projectId
+            ORDER BY count(*) DESC, max(lastActivity) DESC
             """);
         using var r = cmd.ExecuteReader();
         while (r.Read())
