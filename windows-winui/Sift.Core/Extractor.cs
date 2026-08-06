@@ -13,6 +13,8 @@ public sealed record ExtractionResult(List<RawAtom> Atoms, List<RawRelation> Rel
     public bool IsEmpty => Atoms.Count == 0 && Relations.Count == 0;
 }
 
+public sealed record Extraction(ExtractionResult Result, double CostUsd);
+
 /// Turns a finished session into durable statements by asking Claude for them. This is the
 /// one part of Sift that sends transcript text over the network, so nothing here runs unless
 /// the user has switched knowledge extraction on.
@@ -36,36 +38,62 @@ public sealed class Extractor(string claudePath)
     public static bool LooksLikeExtraction(string text) =>
         text.Contains(InstructionMarker, StringComparison.Ordinal);
 
-    public async Task<ExtractionResult> Extract(string transcript, CancellationToken token)
+    public async Task<Extraction> Extract(string transcript, CancellationToken token)
     {
         var clipped = transcript.Length > MaxTranscriptChars
             ? transcript[..MaxTranscriptChars] : transcript;
         var raw = await RunClaude(Instruction + "\n" + clipped, token);
         var json = Unwrap(raw);
-        return json.Trim().Length == 0 ? ExtractionResult.Empty : Parse(json);
+        var result = json.Trim().Length == 0 ? ExtractionResult.Empty : Parse(json);
+        return new Extraction(result, CostOf(raw));
     }
 
+    /// The prompt goes in on stdin. As an argument it is a whole transcript, which blows past
+    /// the Windows command line limit and fails with "the filename or extension is too long".
+    /// PowerShell rather than the executable directly, because on Windows `claude` is a .ps1
+    /// and CreateProcess cannot run one.
     private async Task<string> RunClaude(string prompt, CancellationToken token)
     {
-        var info = new ProcessStartInfo(claudePath)
+        var info = new ProcessStartInfo("powershell.exe")
         {
+            Arguments = "-NoProfile -Command \"" + Launcher.Utf8Prelude + "& " +
+                        Launcher.Quote(claudePath) + " -p --output-format json\"",
+            WorkingDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             RedirectStandardInput = true,
+            StandardOutputEncoding = System.Text.Encoding.UTF8,
+            StandardErrorEncoding = System.Text.Encoding.UTF8,
+            StandardInputEncoding = System.Text.Encoding.UTF8,
             UseShellExecute = false,
             CreateNoWindow = true,
         };
-        info.ArgumentList.Add("-p");
-        info.ArgumentList.Add(prompt);
-        info.ArgumentList.Add("--output-format");
-        info.ArgumentList.Add("json");
 
         using var process = Process.Start(info);
         if (process is null) return "";
+        // Read while writing. A transcript is larger than the pipe buffer, so writing it all
+        // before reading anything deadlocks the moment claude answers early.
+        var reading = process.StandardOutput.ReadToEndAsync(token);
+        await process.StandardInput.WriteAsync(prompt.AsMemory(), token);
         process.StandardInput.Close();
-        var output = await process.StandardOutput.ReadToEndAsync(token);
+        var output = await reading;
         await process.WaitForExitAsync(token);
         return output;
+    }
+
+    /// What the run cost, straight from the envelope, so a backlog of a thousand sessions can
+    /// say what it is spending instead of finding out afterwards.
+    public static double CostOf(string raw)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(raw.Trim());
+            return doc.RootElement.ValueKind == JsonValueKind.Object &&
+                   doc.RootElement.TryGetProperty("total_cost_usd", out var cost) &&
+                   cost.ValueKind == JsonValueKind.Number
+                ? cost.GetDouble() : 0;
+        }
+        catch (JsonException) { return 0; }
     }
 
     /// A `claude --output-format json` reply is an envelope with the answer under "result".

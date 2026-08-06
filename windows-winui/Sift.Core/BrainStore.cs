@@ -210,6 +210,7 @@ public sealed class BrainStore : IDisposable
 
     public int AtomCount() => (int)(ScalarLong("SELECT COUNT(*) FROM atom") ?? 0);
     public int EntityCount() => (int)(ScalarLong("SELECT COUNT(*) FROM entity") ?? 0);
+    public int ReadCount() => (int)(ScalarLong("SELECT COUNT(*) FROM ingested") ?? 0);
 
     public List<Atom> Atoms(string? query = null, string? entityId = null, int limit = 200)
     {

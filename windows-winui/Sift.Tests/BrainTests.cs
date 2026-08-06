@@ -60,6 +60,76 @@ public class ExtractorTests
     }
 }
 
+public class StreamEventTests
+{
+    [Fact]
+    public void AToolCallSaysWhatItIsActingOn()
+    {
+        var line = """
+            {"type":"assistant","message":{"content":[
+              {"type":"tool_use","name":"Bash","input":{"command":"npm test","description":"run"}}]}}
+            """;
+        Assert.Equal("→ Bash: npm test", StreamEvents.Read(line).Display);
+    }
+
+    [Fact]
+    public void WhatClaudeSaysComesThrough()
+    {
+        var line = """
+            {"type":"assistant","message":{"content":[{"type":"text","text":"Switched to keyset."}]}}
+            """;
+        Assert.Equal("Switched to keyset.", StreamEvents.Read(line).Display);
+    }
+
+    [Fact]
+    public void ToolResultsAreNotWorthShowing()
+    {
+        var line = """
+            {"type":"user","message":{"content":[{"type":"tool_result","content":"exit 0"}]}}
+            """;
+        Assert.Null(StreamEvents.Read(line).Display);
+    }
+
+    [Fact]
+    public void TheFinalAnswerIsSeparateFromTheCommentary()
+    {
+        var line = """
+            {"type":"result","subtype":"success","result":"All 12 tests pass.","total_cost_usd":0.0412}
+            """;
+        var read = StreamEvents.Read(line);
+        Assert.Equal("All 12 tests pass.", read.FinalResult);
+        Assert.Contains("Done.", read.Display);
+        Assert.Contains("0.041", read.Display);
+    }
+
+    [Fact]
+    public void AFailedRunSaysSoRatherThanReportingDone()
+    {
+        var read = StreamEvents.Read("""{"type":"result","subtype":"error_max_turns","result":""}""");
+        Assert.Contains("error_max_turns", read.Display);
+    }
+
+    [Fact]
+    public void ALineThatIsNotAnEventIsShownRatherThanSwallowed()
+    {
+        // Losing this is how a task with a missing claude looks identical to one that worked.
+        Assert.Equal("command not found: claude", StreamEvents.Read("command not found: claude").Display);
+        Assert.Null(StreamEvents.Read("   ").Display);
+        Assert.Equal("{oops", StreamEvents.Read("{oops").Display);
+    }
+
+    [Fact]
+    public void ALongCommandIsCutRatherThanFloodingThePane()
+    {
+        var command = new string('x', 400);
+        var line = "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"tool_use\"," +
+                   "\"name\":\"Bash\",\"input\":{\"command\":\"" + command + "\"}}]}}";
+        var display = StreamEvents.Read(line).Display!;
+        Assert.True(display.Length < 200, $"was {display.Length}");
+        Assert.EndsWith("…", display);
+    }
+}
+
 public class BrainStoreTests
 {
     private static ExtractionResult Sample() => new(

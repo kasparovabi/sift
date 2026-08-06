@@ -70,7 +70,10 @@ public sealed partial class MainPage : Page
     private readonly DispatcherTimer _ingest = new() { Interval = TimeSpan.FromSeconds(90) };
     private readonly CancellationTokenSource _ingestStop = new();
     private BrainIngester? _ingester;
+    private CancellationTokenSource? _catchUp;
+    private bool _catchingUp;
     private bool _ingesting;
+    private double _spent;
     private List<NodePosition> _nodes = [];
     private List<GraphEdge> _edges = [];
     private CancellationTokenSource? _taskRun;
@@ -125,6 +128,9 @@ public sealed partial class MainPage : Page
         StatusLine.Text = $"{result.Total} sessions";
         ShowRetention();
         Refresh();
+        // Extraction runs from launch, not from the first visit to Knowledge: a backlog that
+        // only moves while someone is looking at it never finishes.
+        if (Preferences.KnowledgeExtractionEnabled) _ingest.Start();
     }
 
     /// Says plainly what Claude Code is set to delete and what Sift has kept, and offers
@@ -169,8 +175,8 @@ public sealed partial class MainPage : Page
             ? "Finished sessions are sent to claude under your own account, a couple at a time, " +
               "and what comes back is stored locally. Turning it off stops that immediately."
             : "Sift can read your finished sessions and pull durable facts out of them. Doing " +
-              "that sends transcript text to Claude under your own account and spends your " +
-              "tokens, so it stays off until you say otherwise.";
+              "that sends transcript text to Claude under your own account and uses your " +
+              "allowance, so it stays off until you say otherwise.";
         BrainConsent.ActionButton = new Button
         {
             Content = on ? "Turn extraction off" : "Turn extraction on",
@@ -183,10 +189,80 @@ public sealed partial class MainPage : Page
             ? "Durable facts pulled out of finished sessions, and the things they are about."
             : $"{atoms} facts about {entities} things, from your finished sessions.";
 
+        ShowBacklog();
         RefreshAtoms();
         RefreshGraph();
         if (on) _ingest.Start();
     }
+
+    /// A fresh install has the whole library waiting and nothing to show for it, which reads
+    /// as broken. Saying how many sessions are left, and offering to work through them now
+    /// rather than a couple every minute and a half, is the difference.
+    private void ShowBacklog()
+    {
+        if (!Preferences.KnowledgeExtractionEnabled)
+        {
+            BacklogRow.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        var read = Brain.ReadCount();
+        var left = Ingester.Remaining();
+        BacklogRow.Visibility = Visibility.Visible;
+        CatchUpButton.IsEnabled = left > 0 || _catchingUp;
+        CatchUpButton.Content = _catchingUp ? "Stop" : "Read everything now";
+        BacklogLine.Text = left == 0
+            ? $"All {read} sessions read. New ones are picked up as you finish them. {Spent()}"
+            : $"{read} of {read + left} sessions read, {left} to go. Each one is a claude run " +
+              $"against your own account, so it uses your allowance and takes a while. {Spent()}";
+    }
+
+    /// claude reports what a run would have cost at API prices. On a subscription that is not
+    /// a bill, it is a measure of how much of the weekly allowance went in, so it is labelled
+    /// rather than shown as money owed.
+    private string Spent() => _spent <= 0 ? ""
+        : $"So far this session: ${_spent.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)} " +
+          "at API rates, nothing extra on a subscription.";
+
+    private async void CatchUp(object sender, RoutedEventArgs e)
+    {
+        if (_catchingUp)
+        {
+            _catchUp?.Cancel();
+            return;
+        }
+
+        _catchingUp = true;
+        _catchUp = CancellationTokenSource.CreateLinkedTokenSource(_ingestStop.Token);
+        BacklogBusy.IsActive = true;
+        CatchUpButton.Content = "Stop";
+        try
+        {
+            while (!_catchUp.IsCancellationRequested)
+            {
+                var outcome = await Ingester.Tick(_catchUp.Token, limit: 1);
+                if (outcome.Sessions == 0) break;
+                _spent += outcome.CostUsd;
+                var read = Brain.ReadCount();
+                var left = Ingester.Remaining();
+                BacklogLine.Text = $"{read} of {read + left} sessions read, {left} to go. " +
+                                   Spent();
+                RefreshAtoms();
+            }
+        }
+        catch (OperationCanceledException) { }
+        finally
+        {
+            _catchingUp = false;
+            _catchUp = null;
+            BacklogBusy.IsActive = false;
+            RefreshGraph();
+            RefreshBrain();
+        }
+    }
+
+    private BrainIngester Ingester =>
+        _ingester ??= new BrainIngester(Brain, _store, new Extractor(AppPaths.ClaudeCommand));
 
     private void RefreshAtoms()
     {
@@ -212,12 +288,11 @@ public sealed partial class MainPage : Page
     /// a backlog of thousands drains slowly and visibly rather than all at once.
     private async Task IngestSome()
     {
-        if (_ingesting || !Preferences.KnowledgeExtractionEnabled) return;
+        if (_ingesting || _catchingUp || !Preferences.KnowledgeExtractionEnabled) return;
         _ingesting = true;
         try
         {
-            _ingester ??= new BrainIngester(Brain, _store, new Extractor(AppPaths.ClaudeCommand));
-            var outcome = await _ingester.Tick(_ingestStop.Token);
+            var outcome = await Ingester.Tick(_ingestStop.Token);
             if (outcome.Atoms > 0 && BrainView.Visibility == Visibility.Visible) RefreshBrain();
         }
         catch (OperationCanceledException) { }

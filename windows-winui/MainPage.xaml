@@ -248,8 +248,17 @@
                                Text="Durable facts pulled out of finished sessions, and the things they are about." />
                 </StackPanel>
 
-                <InfoBar Grid.Row="1" x:Name="BrainConsent" IsOpen="False" IsClosable="False"
-                         Severity="Informational" Title="Extraction is off" />
+                <StackPanel Grid.Row="1" Spacing="10">
+                    <InfoBar x:Name="BrainConsent" IsOpen="False" IsClosable="False"
+                             Severity="Informational" Title="Extraction is off" />
+                    <StackPanel x:Name="BacklogRow" Orientation="Horizontal" Spacing="12"
+                                VerticalAlignment="Center" Visibility="Collapsed">
+                        <Button x:Name="CatchUpButton" Content="Read everything now" Click="CatchUp" />
+                        <ProgressRing x:Name="BacklogBusy" IsActive="False" Width="18" Height="18" />
+                        <TextBlock x:Name="BacklogLine" VerticalAlignment="Center" Opacity="0.75"
+                                   TextWrapping="Wrap" />
+                    </StackPanel>
+                </StackPanel>
 
                 <Grid Grid.Row="2" ColumnSpacing="14">
                     <Grid.ColumnDefinitions>

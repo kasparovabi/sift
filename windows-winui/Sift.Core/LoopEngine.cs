@@ -104,13 +104,9 @@ public sealed class LoopEngine
 
     private async Task<string> Run(string prompt, string cwd, Action<string> onLine, CancellationToken token)
     {
-        var text = new System.Text.StringBuilder();
-        await Launcher.RunQuickTask(_claude, cwd, prompt, line =>
-        {
-            text.AppendLine(line);
-            onLine(line);
-        }, token);
-        return text.ToString().Trim();
+        // The checker grades the answer, so it gets the answer. The step-by-step lines go to
+        // the log for a person to watch; grading those would grade the commentary.
+        return (await Launcher.RunQuickTask(_claude, cwd, prompt, onLine, token)).Trim();
     }
 
     /// `doneWhen` as a shell command: tests, a linter, a file check. Exit 0 means done.

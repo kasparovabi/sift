@@ -31,22 +31,30 @@ public static class Preferences
     public const int ExtractionsPerTick = 2;
 }
 
-public sealed record IngestOutcome(int Sessions, int Atoms);
+public sealed record IngestOutcome(int Sessions, int Atoms, double CostUsd);
 
 /// Feeds finished sessions through the extractor into the brain, a couple at a time.
 public sealed class BrainIngester(BrainStore brain, IndexStore index, Extractor extractor)
 {
+    /// How many sessions are indexed but have never been read for knowledge. A fresh install
+    /// starts with the whole library here, and it only ever goes down.
+    public int Remaining() =>
+        index.Search("", null, null, int.MaxValue).Count(h => !brain.AlreadyIngested(h.SessionId));
+
     public async Task<IngestOutcome> Tick(CancellationToken token,
-                                          int limit = Preferences.ExtractionsPerTick)
+                                          int limit = Preferences.ExtractionsPerTick,
+                                          Action<int, int>? progress = null)
     {
-        if (!Preferences.KnowledgeExtractionEnabled) return new IngestOutcome(0, 0);
+        if (!Preferences.KnowledgeExtractionEnabled) return new IngestOutcome(0, 0, 0);
 
         var sessions = 0;
         var atoms = 0;
-        foreach (var hit in index.Search("", null, null, 400))
+        var spent = 0.0;
+        var pending = index.Search("", null, null, int.MaxValue)
+                           .Where(h => !brain.AlreadyIngested(h.SessionId)).ToList();
+        foreach (var hit in pending)
         {
             if (token.IsCancellationRequested || sessions >= limit) break;
-            if (brain.AlreadyIngested(hit.SessionId)) continue;
 
             string transcript;
             try { transcript = ReadTranscript(hit.FilePath); }
@@ -60,12 +68,14 @@ public sealed class BrainIngester(BrainStore brain, IndexStore index, Extractor 
                 continue;
             }
 
-            var result = await extractor.Extract(transcript, token);
-            atoms += brain.Ingest(result, hit.SessionId, hit.ProjectId);
+            var extraction = await extractor.Extract(transcript, token);
+            atoms += brain.Ingest(extraction.Result, hit.SessionId, hit.ProjectId);
             brain.MarkIngested(hit.SessionId);
+            spent += extraction.CostUsd;
             sessions++;
+            progress?.Invoke(sessions, pending.Count);
         }
-        return new IngestOutcome(sessions, atoms);
+        return new IngestOutcome(sessions, atoms, spent);
     }
 
     public static string ReadTranscript(string filePath)
