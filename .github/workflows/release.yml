@@ -1,0 +1,116 @@
+name: Release
+
+# Builds the Windows installer for a tag and attaches it to that tag's release.
+#
+# Signing is conditional on the SignPath secrets being present. Without them the workflow
+# still produces an installer, and says in the release that it is unsigned, rather than
+# failing and leaving the release with nothing on it.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build and attach to'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    # Job-level so the signing step can ask whether the secret exists at all. A secret read
+    # inside a step is not visible to that step's own `if`.
+    env:
+      SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Work out the version
+        id: version
+        shell: pwsh
+        run: |
+          $tag = "${{ github.event.inputs.tag || github.ref_name }}"
+          $version = $tag -replace '^v', ''
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Test the core
+        run: dotnet test windows-winui/Sift.Tests/Sift.Tests.csproj -c Release
+
+      - name: Install the WinUI 3 templates
+        run: dotnet new install Microsoft.WindowsAppSDK.WinUI.CSharp.Templates
+
+      - name: Publish
+        run: dotnet publish windows-winui/SiftWinUI.csproj -c Release -r win-x64 -o publish
+
+      - name: Build the installer
+        shell: pwsh
+        run: |
+          # Inno Setup ships on the GitHub Windows image, but the path moves between image
+          # versions, so it is looked up rather than hard-coded.
+          $iscc = Get-Command iscc.exe -ErrorAction SilentlyContinue
+          if (-not $iscc) {
+            $found = Get-ChildItem 'C:\Program Files (x86)\Inno Setup*' -Filter ISCC.exe -Recurse -ErrorAction SilentlyContinue |
+                     Select-Object -First 1
+            if (-not $found) {
+              choco install innosetup --no-progress -y
+              $found = Get-ChildItem 'C:\Program Files (x86)\Inno Setup*' -Filter ISCC.exe -Recurse |
+                       Select-Object -First 1
+            }
+            $iscc = $found.FullName
+          } else { $iscc = $iscc.Source }
+          & $iscc /DAppVersion=${{ steps.version.outputs.version }} `
+                  /DSourceDir=$PWD\publish `
+                  /O$PWD\dist `
+                  packaging\windows\sift.iss
+          Get-ChildItem dist
+
+      - name: Upload the unsigned installer
+        id: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-unsigned
+          path: dist/*.exe
+          if-no-files-found: error
+
+      # SignPath Foundation signs open-source releases free of charge, with the private key
+      # held in their HSM rather than anywhere in this repository. Until the project is
+      # approved the secrets are absent and this step is skipped.
+      - name: Sign
+        id: sign
+        if: env.SIGNPATH_API_TOKEN != ''
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: sift
+          signing-policy-slug: release-signing
+          github-artifact-id: ${{ steps.upload.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: signed
+
+      - name: Collect what will be published
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path release | Out-Null
+          if (Test-Path signed) { Copy-Item signed\*.exe release\ }
+          else { Copy-Item dist\*.exe release\ }
+          # A zip for anyone who would rather unpack a folder than run an installer.
+          Compress-Archive -Path publish\* -DestinationPath release\Sift-${{ steps.version.outputs.version }}-win-x64.zip
+          Get-ChildItem release
+
+      - name: Attach to the release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          files: release/*
+          fail_on_unmatched_files: true
