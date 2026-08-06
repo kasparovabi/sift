@@ -20,6 +20,7 @@ public sealed class SessionRow
     public long FileSize;
     public long FileMtime;
     public string FullText = "";
+    public Agent Agent = Agent.ClaudeCode;
 }
 
 public sealed record Turn(string Role, string Text, long? At);

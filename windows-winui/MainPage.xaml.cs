@@ -14,6 +14,8 @@ public sealed class ResultItem
     public string Line => (Hit.Snippet ?? Hit.Preview).Replace('\n', ' ');
     public string Meta => string.Join("   ·   ", new[]
     {
+        // Only worth the width once there is more than one agent to tell apart.
+        Hit.Agent == Agent.ClaudeCode ? null : Hit.Agent.Label(),
         Hit.ProjectId, Hit.GitBranch, Ago(Hit.LastActivity), $"{Hit.MessageCount} messages",
     }.Where(s => !string.IsNullOrWhiteSpace(s)));
 
@@ -512,7 +514,8 @@ public sealed partial class MainPage : Page
             },
             Style = (Style)Application.Current.Resources["AccentButtonStyle"],
         };
-        open.Click += (_, _) => Launcher.OpenSession(AppPaths.ClaudeCommand, hit.Cwd ?? "", hit.SessionId);
+        open.Click += (_, _) =>
+            Launcher.OpenSession(AppPaths.ClaudeCommand, hit.Cwd ?? "", hit.SessionId, hit.Agent);
         var reveal = new Button { Content = "Show folder" };
         reveal.Click += (_, _) => Launcher.RevealFolder(hit.Cwd);
         actions.Children.Add(open);
@@ -520,7 +523,11 @@ public sealed partial class MainPage : Page
         Detail.Children.Add(actions);
 
         List<Turn> turns;
-        try { turns = Scanner.LoadTurns(hit.FilePath); }
+        try
+        {
+            turns = hit.Agent == Agent.Codex
+                ? Codex.LoadTurns(hit.FilePath) : Scanner.LoadTurns(hit.FilePath);
+        }
         catch (IOException) { turns = new List<Turn>(); }
 
         if (turns.Count == 0)

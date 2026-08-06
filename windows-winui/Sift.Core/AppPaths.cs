@@ -39,11 +39,19 @@ public static class Indexer
 {
     public sealed record Result(int Total, int Indexed, int Removed);
 
-    public static Result Reindex(IndexStore store, string projectsRoot, Action<int, int>? progress = null)
+    /// `codexRoot` is a parameter rather than a constant so a run can be pointed at
+    /// throwaway data, the same way the projects root can. Left to the default it reads
+    /// wherever Codex actually writes.
+    public static Result Reindex(IndexStore store, string projectsRoot,
+                                 Action<int, int>? progress = null, string? codexRoot = null)
     {
         var found = Scanner.ListTranscripts(projectsRoot);
+        found.AddRange(Codex.ListTranscripts(codexRoot ?? Codex.Root));
         var known = store.Fingerprints();
         var indexed = 0;
+        // Files that parsed to nothing must not look like sessions that vanished on the next
+        // pass, so they are held back from the present-paths set rather than deleted from it.
+        var skipped = new HashSet<string>();
 
         for (var i = 0; i < found.Count; i++)
         {
@@ -52,8 +60,20 @@ public static class Indexer
                 seen.Size == file.Size && seen.Mtime == file.Mtime) continue;
             try
             {
-                var row = Scanner.ParseTranscript(file.FilePath);
-                row.ProjectId = file.ProjectId;
+                SessionRow? row;
+                if (file.ProjectId == "codex")
+                {
+                    // Null means a thread Codex spawned for itself, or a rollout with nothing
+                    // anyone said in it. Neither is a session, so it never enters the index.
+                    row = Codex.ParseTranscript(file.FilePath);
+                    if (row is null) { skipped.Add(file.FilePath); continue; }
+                    row.Agent = Agent.Codex;
+                }
+                else
+                {
+                    row = Scanner.ParseTranscript(file.FilePath);
+                    row.ProjectId = file.ProjectId;
+                }
                 row.FileSize = file.Size;
                 row.FileMtime = file.Mtime;
                 store.Upsert(row);
@@ -63,7 +83,8 @@ public static class Indexer
             if (i % 100 == 0) progress?.Invoke(i, found.Count);
         }
 
-        var removed = store.RemoveMissing(found.Select(f => f.FilePath));
+        var removed = store.RemoveMissing(
+            found.Select(f => f.FilePath).Where(p => !skipped.Contains(p)));
         return new Result(found.Count, indexed, removed);
     }
 }

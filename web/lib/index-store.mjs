@@ -22,9 +22,11 @@ export class IndexStore {
         version TEXT, startedAt INTEGER, lastActivity INTEGER,
         messageCount INTEGER NOT NULL DEFAULT 0, toolCallCount INTEGER NOT NULL DEFAULT 0,
         fileSize INTEGER NOT NULL, fileMtime INTEGER NOT NULL,
-        archived INTEGER NOT NULL DEFAULT 0
+        archived INTEGER NOT NULL DEFAULT 0,
+        agent TEXT NOT NULL DEFAULT 'claude'
       );
       CREATE INDEX IF NOT EXISTS session_project ON session(projectId);
+      CREATE INDEX IF NOT EXISTS session_agent ON session(agent);
       CREATE INDEX IF NOT EXISTS session_activity ON session(lastActivity);
       CREATE VIRTUAL TABLE IF NOT EXISTS session_ft USING fts5(
         sessionId UNINDEXED, title, firstMessage, fullText,
@@ -44,17 +46,19 @@ export class IndexStore {
     this.db.prepare(`
       INSERT INTO session (sessionId, projectId, filePath, cwd, gitBranch, title, firstMessage,
                            entrypoint, version, startedAt, lastActivity, messageCount,
-                           toolCallCount, fileSize, fileMtime)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                           toolCallCount, fileSize, fileMtime, agent)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
       ON CONFLICT(sessionId) DO UPDATE SET
         projectId=excluded.projectId, filePath=excluded.filePath, cwd=excluded.cwd,
         gitBranch=excluded.gitBranch, title=excluded.title, firstMessage=excluded.firstMessage,
         entrypoint=excluded.entrypoint, version=excluded.version, startedAt=excluded.startedAt,
         lastActivity=excluded.lastActivity, messageCount=excluded.messageCount,
-        toolCallCount=excluded.toolCallCount, fileSize=excluded.fileSize, fileMtime=excluded.fileMtime
+        toolCallCount=excluded.toolCallCount, fileSize=excluded.fileSize,
+        fileMtime=excluded.fileMtime, agent=excluded.agent
     `).run(row.sessionId, project, row.filePath, row.cwd, row.gitBranch, row.title,
            row.firstMessage, row.entrypoint, row.version, row.startedAt, row.lastActivity,
-           row.messageCount, row.toolCallCount, row.fileSize, row.fileMtime);
+           row.messageCount, row.toolCallCount, row.fileSize, row.fileMtime,
+           row.agent ?? 'claude');
 
     this.db.prepare('DELETE FROM session_ft WHERE sessionId = ?').run(row.sessionId);
     this.db.prepare('INSERT INTO session_ft(sessionId, title, firstMessage, fullText) VALUES (?,?,?,?)')

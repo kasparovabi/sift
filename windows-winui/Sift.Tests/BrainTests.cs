@@ -294,3 +294,124 @@ public class ProjectFoldingTests
         Assert.Null(IndexStore.Parent("/Users"));
     }
 }
+
+public class CodexTests
+{
+    private static string Write(string dir, string name, params string[] lines)
+    {
+        Directory.CreateDirectory(dir);
+        var path = Path.Combine(dir, name);
+        File.WriteAllText(path, string.Join("\n", lines));
+        return path;
+    }
+
+    private const string Meta =
+        """{"timestamp":"2026-07-14T15:21:31.121Z","type":"session_meta","payload":{"id":"x1","cwd":"C:\\code\\orbit","cli_version":"0.144.2","originator":"Codex Desktop","git":{"branch":"main"}}}""";
+
+    private static string Message(string role, string text) =>
+        "{\"timestamp\":\"2026-07-14T15:22:00.000Z\",\"type\":\"response_item\",\"payload\":" +
+        "{\"type\":\"message\",\"role\":\"" + role + "\",\"content\":[{\"type\":\"input_text\"," +
+        "\"text\":\"" + text + "\"}]}}";
+
+    [Fact]
+    public void ATranscriptYieldsOnlyWhatTheTwoSidesSaid()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "sift-codex-" + Guid.NewGuid());
+        var file = Write(dir, "rollout-a.jsonl",
+            Meta,
+            Message("developer", "<permissions instructions> read-only"),
+            Message("user", "offset pagination is slow"),
+            Message("assistant", "Use keyset."),
+            """{"timestamp":"2026-07-14T15:23:00.000Z","type":"response_item","payload":{"type":"function_call","name":"shell"}}""");
+
+        var row = Codex.ParseTranscript(file);
+        Assert.NotNull(row);
+        Assert.Equal("x1", row!.SessionId);
+        Assert.Equal(@"C:\code\orbit", row.Cwd);
+        Assert.Equal("main", row.GitBranch);
+        Assert.Equal(2, row.MessageCount);
+        Assert.Equal(1, row.ToolCallCount);
+        Assert.Equal("offset pagination is slow", row.FirstMessage);
+        Assert.Contains("keyset", row.FullText);
+        Directory.Delete(dir, true);
+    }
+
+    [Fact]
+    public void TheHarnessesOwnPreambleIsNotTheUsersFirstMessage()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "sift-codex-" + Guid.NewGuid());
+        var file = Write(dir, "rollout-b.jsonl", Meta,
+            Message("user", "# AGENTS.md instructions do the thing"),
+            Message("user", "<recommended_plugins> here is a list"),
+            Message("user", "actually fix the rate limiter"));
+
+        var row = Codex.ParseTranscript(file);
+        Assert.Equal(1, row!.MessageCount);
+        Assert.Equal("actually fix the rate limiter", row.FirstMessage);
+        Directory.Delete(dir, true);
+    }
+
+    [Fact]
+    public void AThreadCodexSpawnedForItselfIsNotASession()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "sift-codex-" + Guid.NewGuid());
+        var file = Write(dir, "rollout-c.jsonl",
+            """{"timestamp":"2026-07-14T15:21:31.121Z","type":"session_meta","payload":{"id":"x2","cwd":"C:\\code","thread_source":"subagent","parent_thread_id":"p1"}}""",
+            Message("user", "judge this"));
+        Assert.Null(Codex.ParseTranscript(file));
+        Directory.Delete(dir, true);
+    }
+
+    [Fact]
+    public void ARolloutWithNothingSaidIsNotASession()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "sift-codex-" + Guid.NewGuid());
+        Assert.Null(Codex.ParseTranscript(Write(dir, "rollout-d.jsonl", Meta)));
+        Directory.Delete(dir, true);
+    }
+
+    [Fact]
+    public void RolloutsAreFoundThroughTheDateNesting()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "sift-codex-" + Guid.NewGuid());
+        Write(Path.Combine(root, "2026", "07", "14"), "rollout-a.jsonl", Meta, Message("user", "hi"));
+        Write(Path.Combine(root, "2026", "08", "01"), "rollout-b.jsonl", Meta, Message("user", "hi"));
+        Write(Path.Combine(root, "2026", "08", "01"), "notes.jsonl", Meta);
+
+        var found = Codex.ListTranscripts(root);
+        Assert.Equal(2, found.Count);
+        Assert.All(found, f => Assert.Equal("codex", f.ProjectId));
+        Directory.Delete(root, true);
+    }
+
+    [Fact]
+    public void AMissingCodexDirectoryIsNotAnError() =>
+        Assert.Empty(Codex.ListTranscripts(Path.Combine(Path.GetTempPath(), "nowhere-" + Guid.NewGuid())));
+
+    [Fact]
+    public void BothAgentsResumeByTheIdTheirTranscriptRecords()
+    {
+        var claude = Launcher.ResumeCommand("claude.ps1", @"C:\code", "abc");
+        Assert.Contains("--resume 'abc'", claude);
+        var codex = Launcher.ResumeCommand("claude.ps1", @"C:\code", "abc", Agent.Codex);
+        Assert.Contains("'codex' resume 'abc'", codex);
+        Assert.DoesNotContain("claude.ps1", codex);
+    }
+
+    [Fact]
+    public void TheIndexRemembersWhichAgentWroteASession()
+    {
+        using var store = new IndexStore(":memory:");
+        store.Upsert(new SessionRow
+        {
+            SessionId = "s1", ProjectId = @"C:\code\orbit", FilePath = @"C:\x\rollout-a.jsonl",
+            Cwd = @"C:\code\orbit", Title = "why is the build slow", FullText = "nothing is cached",
+            MessageCount = 2, FileSize = 10, FileMtime = 1, Agent = Agent.Codex,
+        });
+
+        var listed = Assert.Single(store.Search(""));
+        Assert.Equal(Agent.Codex, listed.Agent);
+        var searched = Assert.Single(store.Search("cached"));
+        Assert.Equal(Agent.Codex, searched.Agent);
+    }
+}

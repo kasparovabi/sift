@@ -13,29 +13,41 @@ export function quoteForShell(token, windows = isWindows) {
   return `'${String(token).replace(/'/g, `'\\''`)}'`;             // POSIX
 }
 
-export function powershellCommand({ claude = 'claude', cwd, sessionId }) {
+/// A session goes back to whichever agent wrote it, by the id its own transcript records:
+/// `claude --resume <id>`, or `codex resume <id>`. claude is a path Sift resolved; codex
+/// comes off PATH, which the shell running this has already set up.
+function program(agent, claude, windows) {
+  return quoteForShell(agent === 'codex' ? 'codex' : claude, windows);
+}
+
+function resumeFlags(agent, sessionId, windows) {
+  const [flag, id] = agent === 'codex' ? ['resume', sessionId] : ['--resume', sessionId];
+  return `${flag} ${quoteForShell(id, windows)}`;
+}
+
+export function powershellCommand({ claude = 'claude', cwd, sessionId, agent = 'claude' }) {
   const parts = [`Set-Location ${quoteForShell(cwd, true)}`];
   parts.push(sessionId
-    ? `& ${quoteForShell(claude, true)} --resume ${quoteForShell(sessionId, true)}`
-    : `& ${quoteForShell(claude, true)}`);
+    ? `& ${program(agent, claude, true)} ${resumeFlags(agent, sessionId, true)}`
+    : `& ${program(agent, claude, true)}`);
   return parts.join('; ');
 }
 
-export function posixScript({ claude = 'claude', cwd, sessionId }) {
+export function posixScript({ claude = 'claude', cwd, sessionId, agent = 'claude' }) {
   const run = sessionId
-    ? `exec ${quoteForShell(claude, false)} --resume ${quoteForShell(sessionId, false)}`
-    : `exec ${quoteForShell(claude, false)}`;
+    ? `exec ${program(agent, claude, false)} ${resumeFlags(agent, sessionId, false)}`
+    : `exec ${program(agent, claude, false)}`;
   return `#!/bin/sh\ncd ${quoteForShell(cwd, false)} || exit 1\n${run}\n`;
 }
 
 /// Opens a session in a real terminal. Windows Terminal when it is there, because it is
 /// what ships with Windows 11 and keeps the window open; otherwise a plain PowerShell
 /// window, which every Windows has.
-export function openSession({ cwd, sessionId, claude = 'claude' }) {
+export function openSession({ cwd, sessionId, claude = 'claude', agent = 'claude' }) {
   const dir = cwd && cwd.length ? cwd : homedir();
 
   if (isWindows) {
-    const command = powershellCommand({ claude, cwd: dir, sessionId });
+    const command = powershellCommand({ claude, cwd: dir, sessionId, agent });
     const psArgs = ['-NoExit', '-NoLogo', '-Command', command];
     const child = spawn('wt.exe', ['-d', dir, 'powershell', ...psArgs], {
       detached: true, stdio: 'ignore', windowsHide: false,
@@ -50,7 +62,7 @@ export function openSession({ cwd, sessionId, claude = 'claude' }) {
   // macOS: hand Terminal.app a throwaway script. Driving it with AppleScript instead
   // makes macOS ask for Automation permission on the first session anyone opens.
   const script = join(tmpdir(), `sift-session-${randomUUID()}.command`);
-  writeFileSync(script, posixScript({ claude, cwd: dir, sessionId }));
+  writeFileSync(script, posixScript({ claude, cwd: dir, sessionId, agent }));
   chmodSync(script, 0o755);
   spawn('open', ['-a', 'Terminal', script], { detached: true, stdio: 'ignore' }).unref();
   return { via: 'terminal' };

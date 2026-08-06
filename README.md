@@ -8,12 +8,12 @@
   <img src="https://img.shields.io/badge/license-MIT-black" alt="MIT">
 </p>
 
-Claude Code writes every session to a transcript on your Mac. After a few months that is
-thousands of files you cannot search, so the work is effectively gone: you remember solving
-something and have no way back to it.
+Claude Code and Codex write every session to a transcript on your machine. After a few
+months that is thousands of files you cannot search, so the work is effectively gone: you
+remember solving something and have no way back to it.
 
 Sift indexes those transcripts and makes them searchable in milliseconds. Find the session,
-read it, and pick it back up in your own terminal.
+read it, and pick it back up in your own terminal, in whichever agent wrote it.
 
 <p align="center">
   <img src="docs/media/tour.gif" width="760" alt="Sift: the library, a search, the knowledge graph, a session opened, and a loop — shown across five themes">
@@ -33,8 +33,14 @@ out; it ships switched off and there is a section about it below.
 **Search.** Full-text search across every session, ranked, with highlighted excerpts. Filter
 by project, git branch, or date. On a 6,000-session library a query returns in about 30 ms.
 
+**Two agents, one index.** Claude Code writes to `~/.claude/projects`, Codex to
+`~/.codex/sessions`. Both are read in a single pass, and a result says which one it came
+from. Most of what Codex leaves behind is not a session anyone had: on the library this was
+built against, 64 of 76 rollouts were threads Codex spawned for itself, and those are
+dropped the way Claude Code's sidechains are.
+
 **Resume.** Open any session back up in your own terminal, in the right working directory,
-with your own shell setup.
+with your own shell setup: `claude --resume <id>`, or `codex resume <id>`.
 
 **Quick tasks.** Run a one-off `claude -p` prompt in a folder without opening a terminal and
 watch the answer stream in. Save the prompts you repeat.
@@ -199,9 +205,9 @@ you use it; closing it stops Sift.
 
 ### What you need either way
 
-- [Claude Code](https://claude.com/claude-code), installed and signed in. Sift reads the
-  sessions Claude Code has already saved on your machine; without it there is nothing to
-  read.
+- [Claude Code](https://claude.com/claude-code) or [Codex](https://openai.com/codex),
+  installed and signed in. Sift reads the sessions they have already saved on your machine;
+  without one of them there is nothing to read.
 - macOS 14 or later, Windows 10 or 11, or any Linux with Node 22.
 
 ### Why there is no download button
@@ -264,8 +270,9 @@ Two consequences of the ad-hoc signature on macOS, worth knowing before filing a
 
 ## How it works
 
-Sift reads the transcripts Claude Code already writes to `~/.claude/projects` and keeps a
-SQLite index (FTS5, BM25 ranking) beside them. The index is a cache: delete it and it rebuilds
+Sift reads the transcripts Claude Code writes to `~/.claude/projects` and Codex writes to
+`~/.codex/sessions`, and keeps a SQLite index (FTS5, BM25 ranking) beside them. The two
+formats differ enough that there are two parsers producing one kind of record. The index is a cache: delete it and it rebuilds
 from the transcripts, which stay the source of truth.
 
 Sessions are not embedded in the app. Opening one launches `claude --resume <id>` in your own

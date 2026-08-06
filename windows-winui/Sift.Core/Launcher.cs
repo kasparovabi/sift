@@ -16,11 +16,19 @@ public static class Launcher
     public const string Utf8Prelude =
         "$OutputEncoding = [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false); ";
 
-    public static string ResumeCommand(string claude, string cwd, string? sessionId)
+    /// Hands the session back to whichever agent wrote it, by the id its own transcript
+    /// records: `claude --resume <id>`, or `codex resume <id>`.
+    public static string ResumeCommand(string claude, string cwd, string? sessionId,
+                                       Agent agent = Agent.ClaudeCode)
     {
+        // claude is resolved to a path Sift knows; codex comes off PATH, which the shell
+        // running this command has already set up.
+        var program = agent == Agent.ClaudeCode ? Quote(claude) : Quote(agent.Command());
         var run = sessionId is null
-            ? $"& {Quote(claude)}"
-            : $"& {Quote(claude)} --resume {Quote(sessionId)}";
+            ? $"& {program}"
+            // The id is quoted, the flag is not: a flag is ours and fixed, and quoting it
+              // reads as an argument in some shells rather than an option.
+            : $"& {program} {string.Join(" ", agent.ResumeArguments(sessionId).Select((a, i) => i == 0 ? a : Quote(a)))}";
         return $"Set-Location {Quote(cwd)}; {run}";
     }
 
@@ -32,10 +40,11 @@ public static class Launcher
 
     /// Opens a session in a real terminal: Windows Terminal where it exists, because that
     /// is what ships with Windows 11, and a plain PowerShell window otherwise.
-    public static void OpenSession(string claude, string cwd, string? sessionId)
+    public static void OpenSession(string claude, string cwd, string? sessionId,
+                                   Agent agent = Agent.ClaudeCode)
     {
         var dir = Directory.Exists(cwd) ? cwd : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        var command = ResumeCommand(claude, dir, sessionId);
+        var command = ResumeCommand(claude, dir, sessionId, agent);
         var psArgs = $"-NoExit -NoLogo -Command \"{command.Replace("\"", "\\\"")}\"";
 
         if (!TryStart("wt.exe", $"-d \"{dir}\" powershell {psArgs}"))

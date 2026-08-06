@@ -83,6 +83,10 @@ public sealed class ScannerTests
 
 public sealed class IndexStoreTests
 {
+    /// A test that indexes a fixture must not also read whatever Codex sessions happen to be
+    /// on the machine running it.
+    private static readonly string NoCodex = Path.Combine(Path.GetTempPath(), "sift-no-codex");
+
     [Fact]
     public void SearchRanksSnippetsAndMatchesPrefixes()
     {
@@ -90,7 +94,7 @@ public sealed class IndexStoreTests
         try
         {
             using var store = new IndexStore(":memory:");
-            var result = Indexer.Reindex(store, Path.Combine(dir, "projects"));
+            var result = Indexer.Reindex(store, Path.Combine(dir, "projects"), null, NoCodex);
             Assert.Equal(1, result.Total);
             Assert.Equal(1, result.Indexed);
 
@@ -113,16 +117,16 @@ public sealed class IndexStoreTests
         {
             using var store = new IndexStore(":memory:");
             var projects = Path.Combine(dir, "projects");
-            Indexer.Reindex(store, projects);
+            Indexer.Reindex(store, projects, null, NoCodex);
 
-            var second = Indexer.Reindex(store, projects);
+            var second = Indexer.Reindex(store, projects, null, NoCodex);
             Assert.Equal(0, second.Indexed);
             Assert.Equal(1, store.Count());
             Assert.Single(store.Search("pagination"));
 
             File.WriteAllText(file,
                 """{"type":"user","sessionId":"s1","cwd":"/Users/alex/code/orbit-api","timestamp":"2026-08-02T10:00:00.000Z","message":{"role":"user","content":"a different subject: kubernetes"}}""" + "\n");
-            var third = Indexer.Reindex(store, projects);
+            var third = Indexer.Reindex(store, projects, null, NoCodex);
             Assert.Equal(1, third.Indexed);
             Assert.Equal(1, store.Count());
             Assert.Empty(store.Search("pagination"));
@@ -139,9 +143,9 @@ public sealed class IndexStoreTests
         {
             using var store = new IndexStore(":memory:");
             var projects = Path.Combine(dir, "projects");
-            Indexer.Reindex(store, projects);
+            Indexer.Reindex(store, projects, null, NoCodex);
             File.Delete(file);
-            var result = Indexer.Reindex(store, projects);
+            var result = Indexer.Reindex(store, projects, null, NoCodex);
             Assert.Equal(1, result.Removed);
             Assert.Equal(0, store.Count());
         }

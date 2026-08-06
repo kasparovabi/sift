@@ -9,8 +9,12 @@ import { humanText, assistantText, parseTranscript, listTranscripts, decodeProje
 import { IndexStore, ftsQuery } from '../lib/index-store.mjs';
 import { quoteForShell, powershellCommand, posixScript } from '../lib/terminal.mjs';
 import { reindex, config } from '../sift.mjs';
+import * as codex from '../lib/codex.mjs';
 import { archiveSize, restore, archivePathFor } from '../lib/archive.mjs';
 import { existsSync } from 'node:fs';
+
+/// A test that indexes a fixture must not also read the machine's own Codex sessions.
+const NO_CODEX = join(tmpdir(), 'sift-no-codex');
 
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), 'sift-web-'));
@@ -66,7 +70,7 @@ test('a turn that is only a tool call has nothing to show', () => {
 test('search ranks, snippets, and matches prefixes', async () => {
   const { root, projects } = await fixture();
   const store = new IndexStore(':memory:');
-  const result = await reindex(store, projects);
+  const result = await reindex(store, projects, () => {}, null, NO_CODEX);
   assert.equal(result.total, 1);
   assert.equal(result.indexed, 1);
 
@@ -84,9 +88,9 @@ test('search ranks, snippets, and matches prefixes', async () => {
 test('a rescan neither duplicates nor re-reads unchanged files', async () => {
   const { root, projects, dir } = await fixture();
   const store = new IndexStore(':memory:');
-  await reindex(store, projects);
+  await reindex(store, projects, () => {}, null, NO_CODEX);
 
-  const second = await reindex(store, projects);
+  const second = await reindex(store, projects, () => {}, null, NO_CODEX);
   assert.equal(second.indexed, 0, 'unchanged files are skipped on size and mtime');
   assert.equal(store.count(), 1);
   assert.equal(store.search({ query: 'pagination' }).length, 1, 'contentless FTS must not double up');
@@ -97,7 +101,7 @@ test('a rescan neither duplicates nor re-reads unchanged files', async () => {
     timestamp: '2026-08-02T10:00:00.000Z',
     message: { role: 'user', content: 'a completely different subject: kubernetes' },
   }) + '\n');
-  const third = await reindex(store, projects);
+  const third = await reindex(store, projects, () => {}, null, NO_CODEX);
   assert.equal(third.indexed, 1);
   assert.equal(store.count(), 1);
   assert.equal(store.search({ query: 'pagination' }).length, 0, 'the old text is gone from the index');
@@ -109,9 +113,9 @@ test('a rescan neither duplicates nor re-reads unchanged files', async () => {
 test('a deleted transcript leaves the index when nothing archived it', async () => {
   const { root, projects, dir } = await fixture();
   const store = new IndexStore(':memory:');
-  await reindex(store, projects);
+  await reindex(store, projects, () => {}, null, NO_CODEX);
   await rm(join(dir, 's1.jsonl'));
-  const result = await reindex(store, projects);
+  const result = await reindex(store, projects, () => {}, null, NO_CODEX);
   assert.equal(result.vanished, 1);
   assert.equal(store.count(), 0);
   store.close();
@@ -123,13 +127,13 @@ test('an archived transcript survives Claude Code deleting it', async () => {
   const support = join(root, 'support');
   const store = new IndexStore(':memory:');
 
-  const first = await reindex(store, projects, () => {}, support);
+  const first = await reindex(store, projects, () => {}, support, NO_CODEX);
   assert.equal(first.archived, 1, 'indexing keeps a copy');
 
   // Claude Code cleans the transcript up.
   await rm(join(dir, 's1.jsonl'));
 
-  const second = await reindex(store, projects, () => {}, support);
+  const second = await reindex(store, projects, () => {}, support, NO_CODEX);
   assert.equal(second.vanished, 1, 'the row moved to the archive rather than being dropped');
   assert.equal(store.count(), 1, 'the session is still in the index');
 
@@ -149,7 +153,7 @@ test('a cleaned-up session can be put back so it resumes', async () => {
   const { root, projects, dir } = await fixture();
   const support = join(root, 'support');
   const store = new IndexStore(':memory:');
-  await reindex(store, projects, () => {}, support);
+  await reindex(store, projects, () => {}, support, NO_CODEX);
 
   const original = join(dir, 's1.jsonl');
   await rm(original);
@@ -166,8 +170,8 @@ test('archiving twice does not copy twice', async () => {
   const { root, projects } = await fixture();
   const support = join(root, 'support');
   const store = new IndexStore(':memory:');
-  await reindex(store, projects, () => {}, support);
-  const again = await reindex(store, projects, () => {}, support);
+  await reindex(store, projects, () => {}, support, NO_CODEX);
+  const again = await reindex(store, projects, () => {}, support, NO_CODEX);
   assert.equal(again.archived, 0, 'an unchanged transcript is already kept');
   store.close();
   await rm(root, { recursive: true, force: true });
@@ -208,4 +212,101 @@ test('data locations follow the platform and are overridable', () => {
   const plain = config({});
   assert.match(plain.projectsRoot, /[\\/]\.claude[\\/]projects$/);
   assert.ok(plain.port > 0);
+});
+
+async function codexFixture() {
+  const root = await mkdtemp(join(tmpdir(), 'sift-codex-'));
+  const day = join(root, 'sessions', '2026', '07', '14');
+  await mkdir(day, { recursive: true });
+  const meta = { timestamp: '2026-07-14T15:21:31.121Z', type: 'session_meta',
+    payload: { id: 'x1', cwd: '/Users/alex/orbit', originator: 'Codex Desktop',
+               cli_version: '0.144.2', git: { branch: 'main' } } };
+  const say = (role, text) => ({ timestamp: '2026-07-14T15:22:00.000Z', type: 'response_item',
+    payload: { type: 'message', role, content: [{ type: 'input_text', text }] } });
+
+  await writeFile(join(day, 'rollout-real.jsonl'), [
+    meta,
+    say('developer', '<permissions instructions> read-only'),
+    say('user', '# AGENTS.md instructions do the thing'),
+    say('user', 'why is the build slow'),
+    say('assistant', 'Nothing is cached.'),
+    { timestamp: '2026-07-14T15:23:00.000Z', type: 'response_item',
+      payload: { type: 'function_call', name: 'shell' } },
+  ].map((l) => JSON.stringify(l)).join('\n'));
+
+  await writeFile(join(day, 'rollout-sub.jsonl'), [
+    { ...meta, payload: { ...meta.payload, thread_source: 'subagent', parent_thread_id: 'p1' } },
+    say('user', 'judge this'),
+  ].map((l) => JSON.stringify(l)).join('\n'));
+
+  await writeFile(join(day, 'rollout-empty.jsonl'), JSON.stringify(meta));
+  return { root, sessions: join(root, 'sessions') };
+}
+
+test('a Codex rollout yields only what the two sides said', async () => {
+  const { root, sessions } = await codexFixture();
+  const meta = await codex.parseTranscript(join(sessions, '2026/07/14/rollout-real.jsonl'));
+  assert.equal(meta.sessionId, 'x1');
+  assert.equal(meta.cwd, '/Users/alex/orbit');
+  assert.equal(meta.gitBranch, 'main');
+  assert.equal(meta.messageCount, 2, 'the developer turn and the AGENTS.md preamble are not messages');
+  assert.equal(meta.toolCallCount, 1);
+  assert.equal(meta.firstMessage, 'why is the build slow');
+  assert.match(meta.fullText, /Nothing is cached/);
+  await rm(root, { recursive: true, force: true });
+});
+
+test('a thread Codex spawned for itself is not a session', async () => {
+  const { root, sessions } = await codexFixture();
+  assert.equal(await codex.parseTranscript(join(sessions, '2026/07/14/rollout-sub.jsonl')), null);
+  assert.equal(await codex.parseTranscript(join(sessions, '2026/07/14/rollout-empty.jsonl')), null);
+  await rm(root, { recursive: true, force: true });
+});
+
+test('rollouts are found through the date nesting', async () => {
+  const { root, sessions } = await codexFixture();
+  const found = await codex.listTranscripts(sessions);
+  assert.equal(found.length, 3);
+  assert.ok(found.every((f) => f.projectId === 'codex'));
+  assert.deepEqual(await codex.listTranscripts(join(root, 'nowhere')), []);
+  await rm(root, { recursive: true, force: true });
+});
+
+test('one pass indexes both agents, and neither drops the other', async () => {
+  const claude = await fixture();
+  const { root: codexRoot, sessions } = await codexFixture();
+  const store = new IndexStore(':memory:');
+
+  const result = await reindex(store, claude.projects, () => {}, null, sessions);
+  assert.equal(result.indexed, 2, 'one Claude session, one real Codex session');
+
+  const all = store.search({ query: '' });
+  assert.equal(all.length, 2);
+  assert.deepEqual(new Set(all.map((r) => r.agent)), new Set(['claude', 'codex']));
+
+  const hit = store.search({ query: 'cached' });
+  assert.equal(hit.length, 1);
+  assert.equal(hit[0].agent, 'codex');
+  assert.equal(hit[0].cwd, '/Users/alex/orbit');
+
+  // A second pass changes nothing and must not drop either side.
+  const again = await reindex(store, claude.projects, () => {}, null, sessions);
+  assert.equal(again.indexed, 0);
+  assert.equal(store.count(), 2);
+
+  store.close();
+  await rm(claude.root, { recursive: true, force: true });
+  await rm(codexRoot, { recursive: true, force: true });
+});
+
+test('a session opens in whichever agent wrote it', () => {
+  const claude = powershellCommand({ claude: 'claude', cwd: 'C:\\code', sessionId: 'abc' });
+  assert.match(claude, /--resume 'abc'/);
+
+  const codexPs = powershellCommand({ claude: 'claude', cwd: 'C:\\code', sessionId: 'abc', agent: 'codex' });
+  assert.match(codexPs, /& 'codex' resume 'abc'/);
+  assert.doesNotMatch(codexPs, /claude/);
+
+  const codexSh = posixScript({ claude: '/usr/bin/claude', cwd: '/tmp', sessionId: 'abc', agent: 'codex' });
+  assert.match(codexSh, /exec 'codex' resume 'abc'/);
 });

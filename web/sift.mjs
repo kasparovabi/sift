@@ -17,6 +17,7 @@ import { homedir } from 'node:os';
 import { spawn } from 'node:child_process';
 
 import { listTranscripts, parseTranscript, displayName, decodeProjectDir } from './lib/scanner.mjs';
+import * as codex from './lib/codex.mjs';
 import { IndexStore } from './lib/index-store.mjs';
 import { openSession, revealFolder, isWindows } from './lib/terminal.mjs';
 import { keep, restore, archiveSize, archivePathFor, currentRetentionDays, setRetentionDays, FOREVER }
@@ -43,18 +44,31 @@ function defaultSupportDir(home, env) {
 
 /// Indexes every transcript that changed since last time. Unchanged files are skipped on
 /// (size, mtime), so a rescan over thousands of sessions costs almost nothing.
-export async function reindex(store, projectsRoot, onProgress = () => {}, supportDir = null) {
+/// `codexRoot` is a parameter for the same reason `projectsRoot` is: a run has to be
+/// pointable at throwaway data, and a test must not read whatever sessions happen to be on
+/// the machine running it.
+export async function reindex(store, projectsRoot, onProgress = () => {}, supportDir = null,
+                              codexRoot = codex.codexRoot()) {
   const found = await listTranscripts(projectsRoot);
+  found.push(...await codex.listTranscripts(codexRoot));
   const known = store.fingerprints();
   let indexed = 0;
   let archived = 0;
+  const skipped = new Set();
 
   for (const [i, file] of found.entries()) {
     const seen = known.get(file.filePath);
     if (seen && seen.size === file.size && seen.mtime === file.mtime) continue;
     try {
-      const meta = await parseTranscript(file.filePath);
-      store.upsert({ ...meta, fileSize: file.size, fileMtime: file.mtime }, file.projectId);
+      const meta = file.projectId === 'codex'
+        ? await codex.parseTranscript(file.filePath)
+        : await parseTranscript(file.filePath);
+      // Null is a thread Codex spawned for itself, or a rollout with nothing anyone said in
+      // it. Neither is a session, so it never enters the index and never counts as one that
+      // vanished later.
+      if (!meta) { skipped.add(file.filePath); continue; }
+      store.upsert({ ...meta, fileSize: file.size, fileMtime: file.mtime },
+                   meta.cwd ?? file.projectId);
       indexed += 1;
       // Kept before anything else can remove it: a search tool whose corpus evaporates
       // after thirty days is not a search tool.
@@ -66,9 +80,10 @@ export async function reindex(store, projectsRoot, onProgress = () => {}, suppor
   }
   // A transcript that has left ~/.claude/projects is not gone from Sift: the row stays and
   // points at the archived copy.
+  const present = found.map((f) => f.filePath).filter((p) => !skipped.has(p));
   const vanished = supportDir
-    ? store.repointMissing(found.map((f) => f.filePath), (p, s) => archivePathFor(supportDir, p, s))
-    : store.removeMissing(found.map((f) => f.filePath));
+    ? store.repointMissing(present, (p, s) => archivePathFor(supportDir, p, s))
+    : store.removeMissing(present);
   return { total: found.length, indexed, archived, vanished };
 }
 
@@ -128,7 +143,8 @@ export function createApp(store, cfg) {
       if (url.pathname === '/api/session') {
         const row = store.get(url.searchParams.get('id'));
         if (!row) return json(res, { error: 'not found' }, 404);
-        const turns = await loadTurns(row.filePath);
+        const turns = row.agent === 'codex'
+          ? await codex.loadTurns(row.filePath) : await loadTurns(row.filePath);
         return json(res, { ...shapeSession(row), turns });
       }
 
@@ -140,7 +156,7 @@ export function createApp(store, cfg) {
         // cleaned up has to be put back before it can be resumed.
         await restore(cfg.supportDir, cfg.projectsRoot, row.projectId, row.sessionId);
         const how = openSession({
-          cwd: row.cwd, sessionId: row.sessionId, claude: cfg.claude,
+          cwd: row.cwd, sessionId: row.sessionId, claude: cfg.claude, agent: row.agent,
         });
         return json(res, { ok: true, ...how });
       }

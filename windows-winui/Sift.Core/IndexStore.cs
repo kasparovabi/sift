@@ -15,6 +15,7 @@ public sealed class SearchHit
     public string? Snippet;
     public int MessageCount;
     public long? LastActivity;
+    public Agent Agent = Agent.ClaudeCode;
 }
 
 public sealed record ProjectRow(string Id, string Path, string Name, int Count, long? LastActivity);
@@ -45,13 +46,26 @@ public sealed class IndexStore : IDisposable
               cwd TEXT, gitBranch TEXT, title TEXT, firstMessage TEXT, entrypoint TEXT,
               startedAt INTEGER, lastActivity INTEGER,
               messageCount INTEGER NOT NULL DEFAULT 0, toolCallCount INTEGER NOT NULL DEFAULT 0,
-              fileSize INTEGER NOT NULL, fileMtime INTEGER NOT NULL);
+              fileSize INTEGER NOT NULL, fileMtime INTEGER NOT NULL,
+              agent TEXT NOT NULL DEFAULT 'claude');
             CREATE INDEX IF NOT EXISTS session_project ON session(projectId);
+            CREATE INDEX IF NOT EXISTS session_agent ON session(agent);
             CREATE INDEX IF NOT EXISTS session_activity ON session(lastActivity);
             CREATE VIRTUAL TABLE IF NOT EXISTS session_ft USING fts5(
               sessionId UNINDEXED, title, firstMessage, fullText,
               tokenize='unicode61', prefix='2 3');
             """);
+        // An index written before Sift read more than one agent has no such column, and
+        // CREATE TABLE IF NOT EXISTS will not add it.
+        AddColumnIfMissing("session", "agent", "TEXT NOT NULL DEFAULT 'claude'");
+    }
+
+    private void AddColumnIfMissing(string table, string column, string definition)
+    {
+        using var check = Cmd($"SELECT count(*) FROM pragma_table_info('{table}') WHERE name = @p0",
+                              column);
+        if (Convert.ToInt32(check.ExecuteScalar()) > 0) return;
+        Exec($"ALTER TABLE {table} ADD COLUMN {column} {definition}");
     }
 
     public void Dispose() => _db.Dispose();
@@ -86,18 +100,20 @@ public sealed class IndexStore : IDisposable
         using (var cmd = Cmd("""
             INSERT INTO session (sessionId, projectId, filePath, cwd, gitBranch, title,
                                  firstMessage, entrypoint, startedAt, lastActivity,
-                                 messageCount, toolCallCount, fileSize, fileMtime)
-            VALUES (@p0,@p1,@p2,@p3,@p4,@p5,@p6,@p7,@p8,@p9,@p10,@p11,@p12,@p13)
+                                 messageCount, toolCallCount, fileSize, fileMtime, agent)
+            VALUES (@p0,@p1,@p2,@p3,@p4,@p5,@p6,@p7,@p8,@p9,@p10,@p11,@p12,@p13,@p14)
             ON CONFLICT(sessionId) DO UPDATE SET
               projectId=excluded.projectId, filePath=excluded.filePath, cwd=excluded.cwd,
               gitBranch=excluded.gitBranch, title=excluded.title,
               firstMessage=excluded.firstMessage, entrypoint=excluded.entrypoint,
               startedAt=excluded.startedAt, lastActivity=excluded.lastActivity,
               messageCount=excluded.messageCount, toolCallCount=excluded.toolCallCount,
+              agent=excluded.agent,
               fileSize=excluded.fileSize, fileMtime=excluded.fileMtime
             """, row.SessionId, row.ProjectId, row.FilePath, row.Cwd, row.GitBranch, row.Title,
                  row.FirstMessage, row.Entrypoint, row.StartedAt, row.LastActivity,
-                 row.MessageCount, row.ToolCallCount, row.FileSize, row.FileMtime))
+                 row.MessageCount, row.ToolCallCount, row.FileSize, row.FileMtime,
+                 row.Agent.Code()))
             cmd.ExecuteNonQuery();
 
         using (var del = Cmd("DELETE FROM session_ft WHERE sessionId = @p0", row.SessionId))
@@ -287,7 +303,7 @@ public sealed class IndexStore : IDisposable
             args.Add(limit);
             cmd = Cmd($"""
                 SELECT sessionId, projectId, filePath, cwd, gitBranch, title, firstMessage,
-                       messageCount, lastActivity, NULL
+                       messageCount, lastActivity, NULL, agent
                 FROM session {(where.Count > 0 ? "WHERE " + string.Join(" AND ", where) : "")}
                 ORDER BY lastActivity DESC LIMIT @p{args.Count - 1}
                 """, args.ToArray());
@@ -307,7 +323,7 @@ public sealed class IndexStore : IDisposable
             cmd = Cmd($"""
                 SELECT s.sessionId, s.projectId, s.filePath, s.cwd, s.gitBranch, s.title,
                        s.firstMessage, s.messageCount, s.lastActivity,
-                       snippet(session_ft, 3, '', '', '…', 12)
+                       snippet(session_ft, 3, '', '', '…', 12), s.agent
                 FROM session_ft
                 JOIN session s ON s.sessionId = session_ft.sessionId
                 WHERE session_ft MATCH @p0 {(where.Count > 0 ? "AND " + string.Join(" AND ", where) : "")}
@@ -336,6 +352,7 @@ public sealed class IndexStore : IDisposable
                     MessageCount = r.GetInt32(7),
                     LastActivity = r.IsDBNull(8) ? null : r.GetInt64(8),
                     Snippet = r.IsDBNull(9) ? null : r.GetString(9),
+                    Agent = Agents.Parse(r.IsDBNull(10) ? null : r.GetString(10)),
                 });
             }
         }
