@@ -310,3 +310,61 @@ test('a session opens in whichever agent wrote it', () => {
   const codexSh = posixScript({ claude: '/usr/bin/claude', cwd: '/tmp', sessionId: 'abc', agent: 'codex' });
   assert.match(codexSh, /exec 'codex' resume 'abc'/);
 });
+
+import * as emb from '../lib/embedder.mjs';
+
+test('both embedding response shapes read, and neither hides a bad one', () => {
+  assert.deepEqual(emb.vectors('{"embeddings":[[0.1,0.2],[0.3,0.4]]}', false), [[0.1, 0.2], [0.3, 0.4]]);
+  assert.deepEqual(emb.vectors('{"data":[{"index":0,"embedding":[1,2,3]}]}', true), [[1, 2, 3]]);
+  assert.deepEqual(emb.vectors('{"embedding":[0.5,0.5]}', false), [[0.5, 0.5]], 'legacy single vector');
+  assert.throws(() => emb.vectors('nope', false));
+  assert.throws(() => emb.vectors('{}', false));
+});
+
+test('model lists read in both shapes, and a chat model is not an embedding model', () => {
+  assert.deepEqual(emb.models('{"models":[{"name":"llama3:8b"},{"name":"nomic-embed-text"}]}'),
+                   ['llama3:8b', 'nomic-embed-text']);
+  assert.deepEqual(emb.models('{"data":[{"id":"text-embedding-bge-m3"}]}'), ['text-embedding-bge-m3']);
+  assert.deepEqual(emb.models('garbage'), []);
+
+  assert.ok(emb.looksLikeEmbeddingModel('nomic-embed-text:latest'));
+  assert.ok(emb.looksLikeEmbeddingModel('all-MiniLM-L6-v2'));
+  assert.ok(!emb.looksLikeEmbeddingModel('llama3:8b'));
+  assert.ok(!emb.looksLikeEmbeddingModel('qwen2.5-coder'));
+});
+
+test('a vector survives the round trip to disk', () => {
+  const vector = [0.25, -0.5, 1, 0];
+  assert.deepEqual(emb.fromBytes(emb.toBytes(vector)), vector);
+  assert.deepEqual(emb.fromBytes(Buffer.alloc(0)), []);
+  assert.deepEqual(emb.fromBytes(Buffer.from([1, 2, 3])), [], 'a truncated blob is not a vector');
+});
+
+test('cosine orders by closeness', () => {
+  assert.equal(emb.cosine([1, 0, 0], [1, 0, 0]), 1);
+  assert.equal(emb.cosine([1, 0, 0], [0, 1, 0]), 0);
+  assert.equal(emb.cosine([1, 0, 0], [-1, 0, 0]), -1);
+  assert.equal(emb.cosine([1, 0, 0], [0, 0, 0]), 0, 'a zero vector cannot be close to anything');
+});
+
+test('what both rankings agree on comes first', () => {
+  const fused = emb.fuse(['b', 'a', 'c'], ['a', 'd', 'b']);
+  assert.equal(fused[0], 'a');
+  assert.deepEqual(new Set(fused), new Set(['a', 'b', 'c', 'd']), 'nothing is thrown away');
+  assert.deepEqual(emb.fuse(['a', 'b'], []), ['a', 'b']);
+  assert.deepEqual(emb.fuse([], []), []);
+});
+
+test('discovery skips a server with no embedding model and finds one that has it', async () => {
+  const fake = async (url) => {
+    if (url.includes('11434')) return { ok: true, text: async () => '{"models":[{"name":"llama3"}]}' };
+    if (url.includes('1234')) return { ok: true, text: async () => '{"data":[{"id":"bge-m3"}]}' };
+    throw new Error('refused');
+  };
+  const found = await emb.discover(fake);
+  assert.equal(found.name, 'LM Studio');
+  assert.equal(found.model, 'bge-m3');
+
+  const nothing = await emb.discover(async () => { throw new Error('refused'); });
+  assert.equal(nothing, null);
+});

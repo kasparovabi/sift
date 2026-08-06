@@ -415,3 +415,82 @@ public class CodexTests
         Assert.Equal(Agent.Codex, searched.Agent);
     }
 }
+
+public class EmbedderTests
+{
+    [Fact]
+    public void BothResponseShapesRead()
+    {
+        var ollama = LocalEmbedder.Vectors("""{"embeddings":[[0.1,0.2],[0.3,0.4]]}""", false);
+        Assert.Equal(2, ollama.Count);
+        Assert.Equal(0.4f, ollama[1][1], 5);
+
+        var openAI = LocalEmbedder.Vectors("""{"object":"list","data":[{"index":0,"embedding":[1,2,3]}]}""", true);
+        Assert.Equal(new[] { 1f, 2f, 3f }, Assert.Single(openAI));
+
+        var legacy = LocalEmbedder.Vectors("""{"embedding":[0.5,0.5]}""", false);
+        Assert.Equal(new[] { 0.5f, 0.5f }, Assert.Single(legacy));
+    }
+
+    [Fact]
+    public void AServerThatAnswersSomethingElseIsAnError()
+    {
+        Assert.Throws<EmbeddingException>(() => LocalEmbedder.Vectors("nope", false));
+        Assert.Throws<EmbeddingException>(() => LocalEmbedder.Vectors("{}", false));
+    }
+
+    [Fact]
+    public void ModelListsReadInBothShapes()
+    {
+        Assert.Equal(["llama3:8b", "nomic-embed-text"],
+            EmbeddingDiscovery.Models("""{"models":[{"name":"llama3:8b"},{"name":"nomic-embed-text"}]}"""));
+        Assert.Equal(["text-embedding-bge-m3"],
+            EmbeddingDiscovery.Models("""{"data":[{"id":"text-embedding-bge-m3"}]}"""));
+        Assert.Empty(EmbeddingDiscovery.Models("garbage"));
+    }
+
+    [Fact]
+    public void AChatModelIsNotAnEmbeddingModel()
+    {
+        Assert.True(EmbeddingDiscovery.LooksLikeEmbeddingModel("nomic-embed-text:latest"));
+        Assert.True(EmbeddingDiscovery.LooksLikeEmbeddingModel("all-MiniLM-L6-v2"));
+        Assert.False(EmbeddingDiscovery.LooksLikeEmbeddingModel("llama3:8b"));
+        Assert.False(EmbeddingDiscovery.LooksLikeEmbeddingModel("qwen2.5-coder"));
+    }
+
+    [Fact]
+    public void AVectorSurvivesTheRoundTripToDisk()
+    {
+        float[] vector = [0.25f, -0.5f, 1f, 0f];
+        Assert.Equal(vector, Vectors.FromBytes(Vectors.ToBytes(vector)));
+        Assert.Empty(Vectors.FromBytes([]));
+        Assert.Empty(Vectors.FromBytes([1, 2, 3]));
+    }
+
+    [Fact]
+    public void CosineOrdersByCloseness()
+    {
+        Assert.Equal(1, Vectors.Cosine([1, 0, 0], [1, 0, 0]), 5);
+        Assert.Equal(0, Vectors.Cosine([1, 0, 0], [0, 1, 0]), 5);
+        Assert.Equal(-1, Vectors.Cosine([1, 0, 0], [-1, 0, 0]), 5);
+        Assert.Equal(0, Vectors.Cosine([1, 0, 0], [0, 0, 0]), 5);
+    }
+
+    [Fact]
+    public void WhatBothRankingsAgreeOnComesFirst()
+    {
+        var fused = Vectors.Fuse(["b", "a", "c"], ["a", "d", "b"]);
+        Assert.Equal("a", fused[0]);
+        Assert.Equal(4, fused.Count);
+        Assert.Equal(["a", "b"], Vectors.Fuse(["a", "b"], []));
+        Assert.Empty(Vectors.Fuse([], []));
+    }
+
+    [Fact]
+    public void VectorsFromTwoModelsAreNotComparable()
+    {
+        var a = new EmbeddingBackend("Ollama", "http://x", "nomic-embed-text", false);
+        var b = new EmbeddingBackend("Ollama", "http://x", "bge-m3", false);
+        Assert.NotEqual(a.Fingerprint, b.Fingerprint);
+    }
+}
