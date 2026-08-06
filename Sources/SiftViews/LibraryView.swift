@@ -31,7 +31,6 @@ public struct LibraryView: View {
     @Environment(ThemeStore.self) private var themes
 
     @State private var section: LibrarySection = .sessions
-    @State private var columns: NavigationSplitViewVisibility = .all
     @State private var askingAboutExtraction = false
 
     public init() {}
@@ -43,7 +42,7 @@ public struct LibraryView: View {
     }
 
     private var split: some View {
-        NavigationSplitView(columnVisibility: $columns) {
+        NavigationSplitView {
             sidebar
                 .navigationSplitViewColumnWidth(min: 200, ideal: 225, max: 320)
         } content: {
@@ -53,12 +52,19 @@ public struct LibraryView: View {
             detail
         }
         .navigationTitle("Sift")
-        .onChange(of: section) { _, new in
-            // The middle column only means anything for sessions; a tool gets the width.
-            columns = new.isSessions ? .all : .detailOnly
-        }
+        // The middle column used to be forced shut while a tool was open, to give the tool
+        // the width. NavigationSplitView kept drawing it anyway, in a state that took no
+        // clicks and no hover: search results appeared and then ignored the pointer. The
+        // width was not worth a column that lies about being there.
+        //
         // Picking a list or a project in the sidebar is a request to browse sessions.
         .onChange(of: index.sidebarSelection) { _, _ in section = .sessions }
+        // So is picking a session. Without this, clicking a result while a tool is open
+        // sets the selection and changes nothing on screen, because the detail column is
+        // still showing the tool: the row looks like it did not register the click.
+        .onChange(of: index.selectedSessionId) { _, id in
+            if id != nil { section = .sessions }
+        }
         .task {
             await index.initialLoad()
             monitor.start()
