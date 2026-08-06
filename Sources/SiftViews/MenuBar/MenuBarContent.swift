@@ -115,7 +115,7 @@ public struct MenuBarContent: View {
     private func resume(_ session: SessionSummary) {
         Task {
             try? await runtime.launch(SessionLaunchRequest(
-                mode: .resume(sessionId: session.sessionId),
+                mode: .resume(sessionId: session.sessionId, agent: session.agent),
                 cwd: session.cwd ?? NSHomeDirectory(),
                 projectId: session.projectId,
                 gitBranch: session.gitBranch,

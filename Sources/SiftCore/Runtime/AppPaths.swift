@@ -12,10 +12,16 @@ import Foundation
 public enum AppPaths {
     public static let projectsRootKey = "SIFT_PROJECTS_ROOT"
     public static let supportDirectoryKey = "SIFT_SUPPORT_DIR"
+    public static let codexRootKey = "SIFT_CODEX_ROOT"
 
     public static var projectsRoot: URL {
         resolve(projectsRootKey) ?? URL(fileURLWithPath: NSHomeDirectory())
             .appendingPathComponent(".claude/projects")
+    }
+
+    /// Codex nests its rollouts by date under a root of its own rather than by project.
+    public static var codexRoot: URL {
+        resolve(codexRootKey) ?? Agent.codex.defaultRoot
     }
 
     public static var supportDirectory: URL {

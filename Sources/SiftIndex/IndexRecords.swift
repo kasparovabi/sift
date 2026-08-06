@@ -47,6 +47,7 @@ struct SessionRecord: Codable, FetchableRecord, PersistableRecord, Sendable {
     var fileMtime: Date
     var indexedAt: Date
     var headOnly: Bool
+    var agent: Agent = .claudeCode
 
     var summary: SessionSummary {
         SessionSummary(
@@ -63,7 +64,8 @@ struct SessionRecord: Codable, FetchableRecord, PersistableRecord, Sendable {
             startedAt: startedAt,
             lastActivity: lastActivity,
             messageCount: messageCount,
-            toolCallCount: toolCallCount
+            toolCallCount: toolCallCount,
+            agent: agent
         )
     }
 }

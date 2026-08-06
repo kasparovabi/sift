@@ -379,7 +379,7 @@ struct SessionListView: View {
     private func open(_ session: SessionSummary) {
         Task {
             try? await runtime.launch(SessionLaunchRequest(
-                mode: .resume(sessionId: session.sessionId),
+                mode: .resume(sessionId: session.sessionId, agent: session.agent),
                 cwd: session.cwd ?? NSHomeDirectory(),
                 projectId: session.projectId,
                 gitBranch: session.gitBranch,
@@ -439,7 +439,9 @@ struct SessionListView: View {
 
     private func copyResumeCommand(_ session: SessionSummary) {
         let cwd = session.cwd ?? NSHomeDirectory()
-        copyToPasteboard("cd '\(cwd)' && claude --resume \(session.sessionId)")
+        let command = ([session.agent.command]
+            + session.agent.resumeArguments(sessionId: session.sessionId)).joined(separator: " ")
+        copyToPasteboard("cd '\(cwd)' && \(command)")
     }
 
     private func openInFinder(_ path: String) {
@@ -497,6 +499,15 @@ struct SessionRow: View {
                         .lineLimit(2)
                 }
                 HStack(spacing: 10) {
+                    // Only worth the width once there is more than one agent to tell apart.
+                    if session.agent != .claudeCode {
+                        Text(session.agent.label)
+                            .font(Palette.font(10))
+                            .foregroundStyle(Palette.magenta)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(Palette.magenta.opacity(0.12), in: Capsule())
+                    }
                     if let projectName {
                         Label(projectName, systemImage: "folder.fill")
                             .foregroundStyle(ProjectPalette.color(for: session.cwd ?? ""))

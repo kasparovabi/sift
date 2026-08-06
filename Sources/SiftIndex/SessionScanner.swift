@@ -21,6 +21,14 @@ struct FileFingerprint: Sendable, Equatable {
 struct ScanResult: Sendable {
     var upserts: [SessionRecord]
     var presentPaths: Set<String>
+
+    /// One pass over every agent has to look like one pass to the store. Applying them
+    /// separately would make each scanner's `presentPaths` the whole truth, and the second
+    /// apply would delete everything the first one had just written.
+    func merged(with other: ScanResult) -> ScanResult {
+        ScanResult(upserts: upserts + other.upserts,
+                   presentPaths: presentPaths.union(other.presentPaths))
+    }
 }
 
 /// Walks `~/.claude/projects`, parsing only top-level session JSONLs whose

@@ -114,6 +114,14 @@ public final class IndexStore: Sendable {
                 t.column("fullText")
             }
         }
+        m.registerMigration("v3_agent") { db in
+            // Everything indexed before this point came from Claude Code, which was the only
+            // thing Sift read, so the default is the truth about existing rows.
+            try db.alter(table: "session") { t in
+                t.add(column: "agent", .text).notNull().defaults(to: Agent.claudeCode.rawValue)
+            }
+            try db.create(index: "session_agent", on: "session", columns: ["agent"])
+        }
         return m
     }()
 

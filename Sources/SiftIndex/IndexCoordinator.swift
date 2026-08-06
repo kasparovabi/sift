@@ -89,6 +89,7 @@ public final class IndexCoordinator {
     @ObservationIgnored private let store: IndexStore
     @ObservationIgnored public let metaStore = SessionMetaStore()
     @ObservationIgnored private let projectsRoot: URL
+    @ObservationIgnored private let codexRoot: URL
     @ObservationIgnored private var watcher: FileWatcher?
     @ObservationIgnored private var watchTask: Task<Void, Never>?
 
@@ -97,9 +98,10 @@ public final class IndexCoordinator {
     /// by full rescan — that would flood the brain with the entire history backfill.
     @ObservationIgnored public var onSessionsChanged: (([String]) -> Void)?
 
-    public init(store: IndexStore, projectsRoot: URL? = nil) {
+    public init(store: IndexStore, projectsRoot: URL? = nil, codexRoot: URL? = nil) {
         self.store = store
         self.projectsRoot = projectsRoot ?? AppPaths.projectsRoot
+        self.codexRoot = codexRoot ?? AppPaths.codexRoot
     }
 
     public func initialLoad() async {
@@ -119,8 +121,10 @@ public final class IndexCoordinator {
         guard !isScanning else { return }
         isScanning = true
         let root = projectsRoot
+        let codex = codexRoot
         let result = await Task.detached(priority: .userInitiated) {
             SessionScanner.scan(projectsRoot: root, known: [:])
+                .merged(with: CodexScanner.scan(root: codex, known: [:]))
         }.value
         try? await store.apply(result)
         await refreshAfterIndexChange()
@@ -131,8 +135,10 @@ public final class IndexCoordinator {
         guard !isScanning else { return }
         let known = (try? await store.fingerprints()) ?? [:]
         let root = projectsRoot
+        let codex = codexRoot
         let result = await Task.detached(priority: .utility) {
             SessionScanner.scan(projectsRoot: root, known: known)
+                .merged(with: CodexScanner.scan(root: codex, known: known))
         }.value
         if result.upserts.isEmpty && result.presentPaths.count == known.count { return }
         try? await store.apply(result)

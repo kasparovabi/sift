@@ -4,7 +4,9 @@ import Foundation
 /// row; the browser never needs to know how a terminal is spawned.
 public struct SessionLaunchRequest: Sendable, Hashable {
     public enum Mode: Sendable, Hashable {
-        case resume(sessionId: String)   // claude --resume <id> (restores cwd + branch)
+        /// Hand the session back to the agent that wrote it, by the id its transcript
+        /// records: `claude --resume <id>` or `codex resume <id>`.
+        case resume(sessionId: String, agent: Agent = .claudeCode)
         case fresh                        // new session in `cwd`
     }
 

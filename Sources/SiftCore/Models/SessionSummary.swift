@@ -26,6 +26,9 @@ public struct SessionSummary: Identifiable, Hashable, Sendable {
     public var lastActivity: Date?
     public var messageCount: Int
     public var toolCallCount: Int
+    /// Which tool wrote this session. Sift read only Claude Code at first, so this defaults
+    /// to it wherever a caller has not been taught about the others yet.
+    public var agent: Agent = .claudeCode
 
     public init(
         sessionId: String,
@@ -41,7 +44,8 @@ public struct SessionSummary: Identifiable, Hashable, Sendable {
         startedAt: Date? = nil,
         lastActivity: Date? = nil,
         messageCount: Int = 0,
-        toolCallCount: Int = 0
+        toolCallCount: Int = 0,
+        agent: Agent = .claudeCode
     ) {
         self.sessionId = sessionId
         self.projectId = projectId
@@ -57,6 +61,7 @@ public struct SessionSummary: Identifiable, Hashable, Sendable {
         self.lastActivity = lastActivity
         self.messageCount = messageCount
         self.toolCallCount = toolCallCount
+        self.agent = agent
     }
 
     /// What the UI shows: the user's custom name, else the auto title, else a placeholder.

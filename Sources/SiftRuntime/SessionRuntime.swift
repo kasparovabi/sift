@@ -89,8 +89,11 @@ public final class SessionRuntime: SessionLauncher, SessionRuntimeStatusProvidin
         // empty/encoded, so cwd is the only key that matches on both sides.
         let brainArgs = brain?.extraArgs(proj: cwd) ?? []
         switch request.mode {
-        case .resume(let id):
-            TerminalLauncher.resume(sessionId: id, cwd: cwd, extraArgs: brainArgs)
+        case .resume(let id, let agent):
+            // The knowledge digest and its MCP server are Claude Code flags. Handing them to
+            // another agent would make the command fail outright.
+            let extras = agent == .claudeCode ? brainArgs : []
+            TerminalLauncher.resume(sessionId: id, cwd: cwd, agent: agent, extraArgs: extras)
             return LaunchedSessionHandle(runtimeSessionId: id, claudeSessionId: id)
         case .fresh:
             TerminalLauncher.fresh(cwd: cwd, extraArgs: brainArgs)

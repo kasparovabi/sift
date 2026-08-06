@@ -36,9 +36,20 @@ public enum TerminalLauncher {
         ghostty == nil ? "Terminal" : "Ghostty"
     }
 
-    /// Continue an existing session (`claude --resume <id>`) in `cwd`.
-    public static func resume(sessionId: String, cwd: String, extraArgs: [String] = []) {
-        run(command: claudeCommand(["--resume", sessionId] + extraArgs), cwd: cwd)
+    /// Continue an existing session in `cwd`, handing it back to whichever agent wrote it:
+    /// `claude --resume <id>`, or `codex resume <id>`.
+    public static func resume(sessionId: String, cwd: String, agent: Agent = .claudeCode,
+                              extraArgs: [String] = []) {
+        let arguments = agent.resumeArguments(sessionId: sessionId) + extraArgs
+        switch agent {
+        case .claudeCode:
+            run(command: claudeCommand(arguments), cwd: cwd)
+        case .codex:
+            // codex comes off PATH rather than a bundled location, and the login shell this
+            // command runs in has already set PATH up.
+            run(command: "exec " + ([agent.command] + arguments).map(shQuoted).joined(separator: " "),
+                cwd: cwd)
+        }
     }
 
     /// Start a fresh session in `cwd`.

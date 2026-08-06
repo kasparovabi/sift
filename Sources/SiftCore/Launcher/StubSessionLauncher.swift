@@ -16,15 +16,17 @@ public final class StubSessionLauncher: SessionLauncher {
     public func launch(_ request: SessionLaunchRequest) async throws -> LaunchedSessionHandle {
         let command: String
         switch request.mode {
-        case .resume(let id):
-            command = "cd \(Self.shellQuote(request.cwd)) && \(Self.shellQuote(binary.path)) --resume \(id)"
+        case .resume(let id, let agent):
+            let program = agent == .claudeCode ? Self.shellQuote(binary.path) : agent.command
+            let arguments = agent.resumeArguments(sessionId: id).joined(separator: " ")
+            command = "cd \(Self.shellQuote(request.cwd)) && \(program) \(arguments)"
         case .fresh:
             command = "cd \(Self.shellQuote(request.cwd)) && \(Self.shellQuote(binary.path))"
         }
         try Self.runInTerminal(command)
 
         let claudeId: String?
-        if case .resume(let id) = request.mode { claudeId = id } else { claudeId = nil }
+        if case .resume(let id, _) = request.mode { claudeId = id } else { claudeId = nil }
         return LaunchedSessionHandle(runtimeSessionId: UUID().uuidString, claudeSessionId: claudeId)
     }
 
