@@ -50,10 +50,6 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
-      - name: Test
-        run: dotnet test windows/Sift.Tests/Sift.Tests.csproj -c Release
-      - name: Publish the WPF build
-        run: dotnet publish windows/Sift/Sift.csproj -c Release -r win-x64 -o publish
       - name: Test the WinUI core
         run: dotnet test windows-winui/Sift.Tests/Sift.Tests.csproj -c Release
       - name: Install the WinUI 3 templates

@@ -223,9 +223,6 @@ They are separate programs rather than one program ported around, because SwiftU
 exists on Apple platforms. They read the same session files and keep the same kind of search
 index, so they behave the same.
 
-`windows/` holds an earlier Windows build using WPF, kept until the WinUI one has been run
-on more machines.
-
 ---
 
 ## Unlimited retention
