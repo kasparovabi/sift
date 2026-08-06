@@ -32,6 +32,19 @@
     <Content Include="Assets\Wide310x150Logo.scale-200.png" />
   </ItemGroup>
 
+  <!-- The library and its tests live inside this folder, and the SDK's default globs would
+       otherwise sweep their sources and generated assembly attributes into this project. -->
+  <ItemGroup>
+    <Compile Remove="Sift.Core\**" />
+    <Compile Remove="Sift.Tests\**" />
+    <None Remove="Sift.Core\**" />
+    <None Remove="Sift.Tests\**" />
+    <Page Remove="Sift.Core\**" />
+    <Page Remove="Sift.Tests\**" />
+    <EmbeddedResource Remove="Sift.Core\**" />
+    <EmbeddedResource Remove="Sift.Tests\**" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="Sift.Core\Sift.Core.csproj" />
   </ItemGroup>
