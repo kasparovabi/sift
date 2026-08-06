@@ -70,6 +70,8 @@ public struct Extractor {
         Return valid JSON only, with no other text. Schema: \
         {"atoms":[{"t":"F|D|P|H|V","s":"one-line claim","imp":1-10,"entities":["name"]}], \
         "relations":[{"s":"subject","p":"predicate","o":"object"}]}. \
+        Write every statement and entity name in English, whatever language the transcript \
+        is in, keeping names, paths and identifiers exactly as they appear. \
         Skip small talk, raw error output, and anything trivial. Transcript:
         """
 

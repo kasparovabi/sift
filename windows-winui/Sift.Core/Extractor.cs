@@ -31,6 +31,11 @@ public sealed class Extractor(string claudePath)
         "{\"atoms\":[{\"t\":\"F|D|P|H|V\",\"s\":\"one-line claim\",\"imp\":1-10," +
         "\"entities\":[\"name\"]}], " +
         "\"relations\":[{\"s\":\"subject\",\"p\":\"predicate\",\"o\":\"object\"}]}. " +
+        // Entities are matched by name, so a transcript in another language splits every
+        // shared thing into a second node and the graph comes apart. Proper nouns are left
+        // alone; it is the wording around them that has to agree.
+        "Write every statement and entity name in English, whatever language the transcript " +
+        "is in, keeping names, paths and identifiers exactly as they appear. " +
         "Skip small talk, raw error output, and anything trivial. Transcript:";
 
     public const int MaxTranscriptChars = 60_000;
