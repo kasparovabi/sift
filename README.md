@@ -45,11 +45,11 @@ and it repeats until it passes or runs out of attempts, keeping the evidence for
 
 **Knowledge graph.** Off by default. Sift extracts durable facts and entities from finished
 sessions into a local store and draws the result as a graph, so connections across projects
-are visible instead of buried. See [What leaves your Mac](#what-leaves-your-mac) first.
+are visible instead of buried. See [What leaves your machine](#what-leaves-your-machine) first.
 
 ---
 
-## What leaves your Mac
+## What leaves your machine
 
 Indexing, search, and resuming all read local files and write a local database. Nothing in
 that path talks to the network.
@@ -105,35 +105,126 @@ WebGPU shader the header image was rendered from: open it, and it draws live.
 
 ---
 
-## Windows
+## Getting Sift
 
-`windows-winui/` is a native Windows app: WinUI 3 on the Windows App SDK, with the Fluent
-look that comes with it — Mica, the system title bar, real Fluent controls. SwiftUI does not
-exist on Windows, so it is a separate implementation rather than a port, reading the same
-transcripts and keeping the same kind of FTS5 index.
+Sift is not in an app store, so you build it once on your own machine. You do not need to
+know how to program; you copy a few lines into a terminal and wait. Pick your platform.
 
-```powershell
-dotnet publish windows-winui\SiftWinUI.csproj -c Release -r win-x64 -o publish
-.\publish\SiftWinUI.exe
-```
+<details>
+<summary><strong>macOS</strong></summary>
 
-Nothing to install first: the runtime ships inside it. Measured on 1,067 transcripts: about
-20 seconds to index, queries under a millisecond, a 19.5 MB index.
-See [windows-winui/README.md](windows-winui/README.md).
-
-`windows/` holds an earlier WPF build of the same thing, kept until the WinUI one has been
-run on a real desktop.
-
-## Linux, or a browser anywhere
-
-`web/` is the same index served to a browser, for machines that are neither. One command, no
-dependencies, since SQLite ships inside Node 22.
+**1. Install the tools you need.** Open the Terminal app (press ⌘Space, type `Terminal`,
+press Return) and paste this, then press Return:
 
 ```sh
+xcode-select --install
+```
+
+If a window appears, click Install and wait for it to finish. If it says the tools are
+already installed, you are fine.
+
+**2. Build Sift.** Paste these three lines into the same window, one at a time:
+
+```sh
+git clone https://github.com/kasparovabi/sift.git
+cd sift
+./scripts/install.sh
+```
+
+The last line takes a few minutes. When it prints `Installed: /Applications/Sift.app`, Sift
+is in your Applications folder like any other app.
+
+**3. Open it.** The first launch reads your existing sessions; a large library takes about a
+minute, once. After that it starts instantly.
+
+</details>
+
+<details>
+<summary><strong>Windows</strong></summary>
+
+**1. Install the tool you need.** Open PowerShell (press the Start button, type
+`PowerShell`, click it) and paste this, then press Return:
+
+```powershell
+winget install Microsoft.DotNet.SDK.8
+```
+
+Close PowerShell and open it again afterwards, so it picks up what was just installed.
+
+**2. Build Sift.** Paste these three lines, one at a time:
+
+```powershell
+git clone https://github.com/kasparovabi/sift.git
+cd sift
+dotnet publish windows-winui\SiftWinUI.csproj -c Release -r win-x64 -o publish
+```
+
+The last line takes a few minutes and prints a lot; that is normal.
+
+**3. Open it.** Double-click `Sift.exe` in the `publish` folder that was created. Windows
+will warn that the app is unrecognised, because it is not signed by a company: click **More
+info**, then **Run anyway**. Right-click `Sift.exe` and choose *Pin to Start* if you want it
+somewhere easy to reach.
+
+Everything Sift needs is inside that folder, so it works on a machine with nothing else
+installed. The folder is about 265 MB for that reason.
+
+</details>
+
+<details>
+<summary><strong>Linux, or any machine, in a browser</strong></summary>
+
+**1. Check you have Node 22 or newer.** In a terminal:
+
+```sh
+node --version
+```
+
+If that prints something lower than `v22`, or an error, install Node from
+[nodejs.org](https://nodejs.org).
+
+**2. Run Sift.** Paste these three lines:
+
+```sh
+git clone https://github.com/kasparovabi/sift.git
+cd sift
 node web/sift.mjs
 ```
 
-See [web/README.md](web/README.md).
+It reads your sessions and opens Sift in your browser. Leave that terminal window open while
+you use it; closing it stops Sift.
+
+</details>
+
+### What you need either way
+
+- [Claude Code](https://claude.com/claude-code), installed and signed in. Sift reads the
+  sessions Claude Code has already saved on your machine; without it there is nothing to
+  read.
+- macOS 14 or later, Windows 10 or 11, or any Linux with Node 22.
+
+### Why there is no download button
+
+A downloadable app has to be signed, which means paying Apple or a certificate authority
+every year. Building it yourself costs nothing, and it means you can see exactly what you
+are running.
+
+---
+
+## Where each version lives
+
+| Folder | What it is |
+|---|---|
+| the repository root | the macOS app, SwiftUI |
+| `windows-winui/` | the Windows app, WinUI 3 |
+| `web/` | the browser version, for Linux or anything else |
+
+They are separate programs rather than one program ported around, because SwiftUI only
+exists on Apple platforms. They read the same session files and keep the same kind of search
+index, so they behave the same.
+
+`windows/` holds an earlier Windows build using WPF, kept until the WinUI one has been run
+on more machines.
 
 ---
 
@@ -147,41 +238,29 @@ resumable too. Resuming an archived session puts the transcript back on disk fir
 
 ---
 
-## Requirements
-
-- macOS 14 or later
-- [Claude Code](https://claude.com/claude-code) installed and signed in
-- A Swift 6 toolchain (Xcode 16 or the standalone toolchain) to build
-- Optional: [Ghostty](https://ghostty.org). Sessions open there when it is installed, and in
-  Terminal.app otherwise. Neither path asks for any permission.
-
----
-
-## Install
-
-Sift is distributed as source. Building it takes one command:
+## Building and hacking on it
 
 ```sh
-git clone https://github.com/kasparovabi/sift.git
-cd sift
-./scripts/install.sh
+swift build -c release          # the macOS app
+swift test
+./scripts/make-app.sh release   # assemble Sift.app without installing
+
+dotnet test windows-winui/Sift.Tests/Sift.Tests.csproj    # the Windows core
+node --test web/test/sift.test.mjs                        # the browser version
 ```
 
-That builds a release binary, assembles `Sift.app`, signs it ad-hoc and installs it to
-`/Applications`. The first launch indexes your existing transcripts; expect about a minute of
-work for a large library, once.
+A Swift 6 toolchain (Xcode 16 or the standalone toolchain) builds the macOS app; the .NET 8
+SDK builds the Windows one. [Ghostty](https://ghostty.org) is optional on macOS: sessions
+open there when it is installed and in Terminal.app otherwise, and neither asks for a
+permission.
 
-There is no notarized download. Notarizing needs a paid Apple Developer ID, and building from
-source beats asking you to trust an unsigned binary from the internet.
-
-Two consequences of the ad-hoc signature, both worth knowing before you file a bug:
+Two consequences of the ad-hoc signature on macOS, worth knowing before filing a bug:
 
 - macOS ties Files-and-Folders permissions to a signing identity, and an ad-hoc one changes
-  on every rebuild. If you run a quick task in `~/Documents` or `~/Desktop`, grant the
-  prompt, then reinstall, macOS will ask again. That is the signature changing, not a bug in
-  Sift.
-- Launch-at-login needs the app to be in `/Applications`. The Settings toggle reports the
-  error rather than silently snapping back.
+  on every rebuild. Grant a prompt, reinstall, and macOS asks again. That is the signature
+  changing, not a bug.
+- Launch-at-login needs the app in `/Applications`. The Settings toggle reports the error
+  rather than silently snapping back.
 
 ---
 
@@ -213,16 +292,6 @@ damaged file is kept rather than deleted.
 Sift reads a directory layout that belongs to Claude Code, not to Sift. If a Claude Code
 release changes where transcripts live or what is in them, indexing can break until Sift
 catches up. Please open an issue with your `claude --version` when that happens.
-
----
-
-## Building and testing
-
-```sh
-swift build -c release          # build
-swift test                      # run the test suite
-./scripts/make-app.sh release   # assemble Sift.app without installing
-```
 
 ---
 

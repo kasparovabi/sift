@@ -131,33 +131,77 @@ public sealed class IndexStore : IDisposable
         return Convert.ToInt32(cmd.ExecuteScalar());
     }
 
-    /// Ordered by how much work is in them, not by recency. A throwaway run leaves a
-    /// project directory behind exactly like a real one does, and on a machine that has
-    /// done a batch of them the recent end of the list is nothing but throwaways: 745 of
-    /// 753 projects on the machine this was built against held a single session each.
+    /// Projects grouped by where they actually are on disk, not by the encoded directory
+    /// name Claude Code stores them under.
+    ///
+    /// That encoding turns every path separator into a dash, so `A:\harness\sandbox\
+    /// clean-20260802\contact_email` and `A:\harness` become unrelated-looking siblings.
+    /// A run that works in scratch subfolders therefore showed up as hundreds of top-level
+    /// projects: on the machine this was built against, 737 of them were subfolders of one
+    /// real project. The session's own `cwd` still has the true path, so a cwd that sits
+    /// under another session's cwd is rolled up into it.
     public List<ProjectRow> Projects()
     {
-        var rows = new List<ProjectRow>();
-        using var cmd = Cmd("""
-            SELECT projectId, count(*), max(lastActivity),
-                   (SELECT cwd FROM session s2 WHERE s2.projectId = s1.projectId AND cwd IS NOT NULL LIMIT 1)
-            FROM session s1 GROUP BY projectId
-            ORDER BY count(*) DESC, max(lastActivity) DESC
-            """);
-        using var r = cmd.ExecuteReader();
-        while (r.Read())
+        var counts = new Dictionary<string, (int Count, long? Last)>(StringComparer.OrdinalIgnoreCase);
+        using (var cmd = Cmd("""
+            SELECT COALESCE(cwd, projectId) AS path, count(*), max(lastActivity)
+            FROM session GROUP BY path
+            """))
+        using (var r = cmd.ExecuteReader())
+            while (r.Read())
+                counts[r.GetString(0)] = (r.GetInt32(1), r.IsDBNull(2) ? null : r.GetInt64(2));
+
+        var roots = Roots(counts.Keys);
+        var rolled = new Dictionary<string, (int Count, long? Last)>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (path, value) in counts)
         {
-            var id = r.GetString(0);
-            var path = r.IsDBNull(3) ? Scanner.DecodeProjectDir(id) : r.GetString(3);
-            rows.Add(new ProjectRow(id, path, Scanner.DisplayName(path), r.GetInt32(1),
-                r.IsDBNull(2) ? null : r.GetInt64(2)));
+            var root = NearestRoot(path, roots);
+            rolled.TryGetValue(root, out var soFar);
+            var last = soFar.Last is null || (value.Last is not null && value.Last > soFar.Last)
+                ? value.Last : soFar.Last;
+            rolled[root] = (soFar.Count + value.Count, last);
         }
-        return rows;
+
+        return rolled
+            .Select(kv => new ProjectRow(kv.Key, kv.Key, Scanner.DisplayName(kv.Key),
+                                         kv.Value.Count, kv.Value.Last))
+            .OrderByDescending(p => p.Count)
+            .ThenByDescending(p => p.LastActivity ?? 0)
+            .ToList();
+    }
+
+    /// A path is a root when no other path in the set is an ancestor of it.
+    internal static HashSet<string> Roots(IEnumerable<string> paths)
+    {
+        var all = paths.ToList();
+        var roots = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var path in all)
+            if (!all.Any(other => IsAncestor(other, path))) roots.Add(path);
+        return roots;
+    }
+
+    internal static string NearestRoot(string path, HashSet<string> roots)
+    {
+        if (roots.Contains(path)) return path;
+        string? best = null;
+        foreach (var root in roots)
+            if (IsAncestor(root, path) && (best is null || root.Length > best.Length)) best = root;
+        return best ?? path;
+    }
+
+    /// True when `parent` contains `child`, matched on whole path components so
+    /// `A:\harness` does not swallow `A:\harness-other`.
+    internal static bool IsAncestor(string parent, string child)
+    {
+        if (parent.Length >= child.Length) return false;
+        if (!child.StartsWith(parent, StringComparison.OrdinalIgnoreCase)) return false;
+        var next = child[parent.Length];
+        return next == '\\' || next == '/';
     }
 
     /// Ranked search. The column weights put a title match above a body match, the same
     /// ordering the macOS app uses. Column 3 is fullText, which the snippet comes from.
-    public List<SearchHit> Search(string query, string? projectId = null, long? since = null, int limit = 200)
+    public List<SearchHit> Search(string query, string? projectPath = null, long? since = null, int limit = 200)
     {
         var trimmed = (query ?? "").Trim();
         var hits = new List<SearchHit>();
@@ -167,7 +211,12 @@ public sealed class IndexStore : IDisposable
         {
             var where = new List<string>();
             var args = new List<object?>();
-            if (projectId is not null) { where.Add($"projectId = @p{args.Count}"); args.Add(projectId); }
+            if (projectPath is not null)
+            {
+                where.Add($"(COALESCE(cwd, projectId) = @p{args.Count} OR COALESCE(cwd, projectId) LIKE @p{args.Count + 1} ESCAPE '\\')");
+                args.Add(projectPath);
+                args.Add(LikePrefix(projectPath));
+            }
             if (since is not null) { where.Add($"lastActivity >= @p{args.Count}"); args.Add(since); }
             args.Add(limit);
             cmd = Cmd($"""
@@ -181,7 +230,12 @@ public sealed class IndexStore : IDisposable
         {
             var args = new List<object?> { FtsQuery(trimmed) };
             var where = new List<string>();
-            if (projectId is not null) { where.Add($"s.projectId = @p{args.Count}"); args.Add(projectId); }
+            if (projectPath is not null)
+            {
+                where.Add($"(COALESCE(s.cwd, s.projectId) = @p{args.Count} OR COALESCE(s.cwd, s.projectId) LIKE @p{args.Count + 1} ESCAPE '\\')");
+                args.Add(projectPath);
+                args.Add(LikePrefix(projectPath));
+            }
             if (since is not null) { where.Add($"s.lastActivity >= @p{args.Count}"); args.Add(since); }
             args.Add(limit);
             cmd = Cmd($"""
@@ -220,6 +274,17 @@ public sealed class IndexStore : IDisposable
             }
         }
         return hits;
+    }
+
+    /// LIKE pattern matching everything under a directory, with the wildcards SQLite would
+    /// otherwise read inside the path escaped.
+    internal static string LikePrefix(string path)
+    {
+        var escaped = path.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_");
+        // A separator, then a real wildcard. The separator is itself escaped because the
+        // escape character IS the separator on Windows; getting this wrong makes the
+        // pattern end in a literal per-cent and match nothing.
+        return escaped + "\\\\%";
     }
 
     private static string FirstLine(string text)

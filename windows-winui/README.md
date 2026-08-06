@@ -12,28 +12,42 @@ Built with Microsoft's [win-dev-skills](https://github.com/microsoft/win-dev-ski
 toolchain, which is what the Fluent look comes from: Mica backdrop, the system title bar,
 NavigationView, and real Fluent controls rather than hand-drawn approximations.
 
-## Build
+## Getting it
+
+You build it once on your own machine. You do not need to know how to program.
+
+**1. Install the tool you need.** Open PowerShell (Start button, type `PowerShell`, click
+it) and paste this:
 
 ```powershell
-dotnet publish SiftWinUI.csproj -c Release -r win-x64 -o publish
-.\publish\Sift.exe
+winget install Microsoft.DotNet.SDK.8
 ```
 
-Republishing over a running copy fails with the DLL locked, so close the app first.
+Close PowerShell and open it again afterwards.
 
-About 265 MB published, because the Windows App SDK and the .NET runtime ship inside it.
-For a much smaller build on a machine that already has both, drop
-`WindowsAppSDKSelfContained` and `SelfContained` from the `.csproj`.
+**2. Build it.** Paste these, one line at a time:
 
-## Prerequisites to build
+```powershell
+git clone https://github.com/kasparovabi/sift.git
+cd sift
+dotnet publish windows-winui\SiftWinUI.csproj -c Release -r win-x64 -o publish
+```
 
-- .NET SDK 8 or later
-- Developer Mode enabled
-- WinUI 3 templates: `dotnet new install Microsoft.WindowsAppSDK.WinUI.CSharp.Templates`
+**3. Open it.** Double-click `Sift.exe` in the `publish` folder. Windows will warn that the
+app is unrecognised, because it is not signed by a company: click **More info**, then **Run
+anyway**.
 
-`winget install --id Microsoft.WinAppCli` gets the WinApp CLI, which the win-dev-skills
-BuildAndRun workflow uses. Note the package id is `Microsoft.WinAppCli`, not the
-`Microsoft.WinAppCLI` some docs give.
+Everything it needs is inside that folder, so it runs on a machine with nothing else
+installed. That is why the folder is about 265 MB. Close the app before rebuilding, or the
+publish fails with the file locked.
+
+For a much smaller build on a machine that already has the .NET 8 desktop runtime and the
+Windows App Runtime, drop `WindowsAppSDKSelfContained` and `SelfContained` from the
+`.csproj`.
+
+```powershell
+dotnet test Sift.Tests\Sift.Tests.csproj
+```
 
 ## What it does
 
@@ -52,10 +66,11 @@ BuildAndRun workflow uses. Note the package id is `Microsoft.WinAppCli`, not the
 - **Keeps your sessions.** See below.
 - **Five appearances**, remembered between runs.
 
-The project list is ordered by how much work is in each project, not by recency, and the
-long tail is folded behind "Show all". A throwaway run leaves a project directory behind
-exactly like a real one does: on the machine this was built against, 745 of 753 projects
-held a single session each, which made a recency-ordered list useless.
+Projects are grouped by where they actually are on disk. Claude Code stores each session
+under a directory name with every path separator replaced by a dash, so a scratch folder
+inside a project looks like a separate top-level project. On the machine this was built
+against that turned one project into 738: `A:\harness` plus 737 sandbox folders inside it.
+Reading the real path back out of the session collapses 754 entries to 8.
 
 ## Unlimited retention
 

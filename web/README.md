@@ -5,14 +5,34 @@ not be carried over. What did carry over is the part that matters: read the tran
 Claude Code already writes, keep a SQLite FTS5 index beside them, and hand a session back to
 a real terminal. This serves that to a browser instead.
 
+## Getting it
+
+You do not need to know how to program; you paste a few lines into a terminal.
+
+**1. Check you have Node 22 or newer.**
+
 ```sh
+node --version
+```
+
+If that prints something below `v22`, or an error, install Node from
+[nodejs.org](https://nodejs.org).
+
+**2. Run it.**
+
+```sh
+git clone https://github.com/kasparovabi/sift.git
+cd sift
 node web/sift.mjs
 ```
 
-It indexes, opens `http://127.0.0.1:4319`, and that is the whole install. There are no
-dependencies to fetch: SQLite ships inside Node 22 and later.
+It reads your sessions and opens Sift in your browser. Leave that terminal window open while
+you use it; closing it stops Sift.
 
-On a Windows machine with 1,067 transcripts the first index took 13 seconds, queries come
+There is nothing else to install: SQLite ships inside Node 22 and later, so this has no
+dependencies at all.
+
+On a Windows machine with 1,067 transcripts the first read took 13 seconds, searches come
 back in about 8 ms, and the index is 19.5 MB.
 
 ## What it does

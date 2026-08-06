@@ -1,9 +1,9 @@
 using System.IO;
 using System.Text.Json;
-using Sift.Core;
+using SiftWinUI.Core;
 using Xunit;
 
-namespace Sift.Tests;
+namespace SiftWinUI.Tests;
 
 public sealed class ScannerTests
 {
@@ -178,37 +178,6 @@ public sealed class LauncherTests
         var command = Launcher.ResumeCommand("claude", @"C:\code", null);
         Assert.DoesNotContain("--resume", command);
         Assert.Contains("& 'claude'", command);
-    }
-}
-
-public sealed class ThemeTests
-{
-    [Fact]
-    public void EveryThemeIsListedOnceAndHasCopy()
-    {
-        var ids = ThemeManager.All.Select(t => t.Id).ToArray();
-        Assert.Equal(ids.Length, ids.Distinct().Count());
-        Assert.True(ThemeManager.All.Length >= 4);
-        Assert.All(ThemeManager.All, t =>
-        {
-            Assert.False(string.IsNullOrWhiteSpace(t.Name));
-            Assert.False(string.IsNullOrWhiteSpace(t.Blurb));
-        });
-    }
-
-    [Fact]
-    public void ThemesAreActuallyDifferentFromEachOther()
-    {
-        var backgrounds = ThemeManager.All.Select(t => t.Base).Distinct().Count();
-        Assert.Equal(ThemeManager.All.Length, backgrounds);
-    }
-
-    [Fact]
-    public void AnUnknownIdFallsBackInsteadOfFailing()
-    {
-        Assert.Equal("ocean", ThemeManager.Named(null).Id);
-        Assert.Equal("ocean", ThemeManager.Named("wasteland").Id);
-        Assert.Equal("paper", ThemeManager.Named("paper").Id);
     }
 }
 

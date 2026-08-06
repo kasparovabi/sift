@@ -54,6 +54,8 @@ jobs:
         run: dotnet test windows/Sift.Tests/Sift.Tests.csproj -c Release
       - name: Publish the WPF build
         run: dotnet publish windows/Sift/Sift.csproj -c Release -r win-x64 -o publish
+      - name: Test the WinUI core
+        run: dotnet test windows-winui/Sift.Tests/Sift.Tests.csproj -c Release
       - name: Install the WinUI 3 templates
         run: dotnet new install Microsoft.WindowsAppSDK.WinUI.CSharp.Templates
       - name: Publish the WinUI 3 build
