@@ -18,7 +18,7 @@ public final class StubSessionLauncher: SessionLauncher {
         switch request.mode {
         case .resume(let id, let agent):
             let program = agent == .claudeCode ? Self.shellQuote(binary.path) : agent.command
-            let arguments = agent.resumeArguments(sessionId: id).joined(separator: " ")
+            let arguments = agent.resumeArguments(sessionId: id).map(Self.shellQuote).joined(separator: " ")
             command = "cd \(Self.shellQuote(request.cwd)) && \(program) \(arguments)"
         case .fresh:
             command = "cd \(Self.shellQuote(request.cwd)) && \(Self.shellQuote(binary.path))"
