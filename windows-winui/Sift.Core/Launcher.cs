@@ -60,7 +60,7 @@ public static class Launcher
         var forTerminal = Escape(ResumeRun(claude, sessionId, agent));
         var forShell = Escape(ResumeCommand(claude, dir, sessionId, agent));
 
-        if (!TryStart("wt.exe", $"-d \"{dir}\" powershell -NoExit -NoLogo -Command \"{forTerminal}\""))
+        if (!TryStart("wt.exe", $"-d {QuoteArgument(dir)} powershell -NoExit -NoLogo -Command \"{forTerminal}\""))
             TryStart("powershell.exe", $"-NoExit -NoLogo -Command \"{forShell}\"");
     }
 
@@ -68,10 +68,36 @@ public static class Launcher
     {
         var dir = !string.IsNullOrWhiteSpace(path) && Directory.Exists(path)
             ? path : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        TryStart("explorer.exe", $"\"{dir}\"");
+        TryStart("explorer.exe", QuoteArgument(dir));
     }
 
     private static string Escape(string command) => command.Replace("\"", "\\\"");
+
+    /// One argument for a Windows command line, by the rules CommandLineToArgvW reads back.
+    ///
+    /// A working directory comes out of a transcript, so it is not ours to trust. Dropped
+    /// straight between two quotes, a path holding one of its own would end the argument
+    /// early and hand whatever followed to the terminal as further arguments.
+    internal static string QuoteArgument(string argument)
+    {
+        var quoted = new System.Text.StringBuilder("\"");
+        var backslashes = 0;
+        foreach (var c in argument)
+        {
+            if (c == '\\') { backslashes++; continue; }
+            if (c == '"')
+            {
+                // Backslashes are only special in front of a quote, where they double.
+                quoted.Append('\\', backslashes * 2 + 1).Append('"');
+                backslashes = 0;
+                continue;
+            }
+            quoted.Append('\\', backslashes).Append(c);
+            backslashes = 0;
+        }
+        // The closing quote is a quote too, so any run reaching it doubles as well.
+        return quoted.Append('\\', backslashes * 2).Append('"').ToString();
+    }
 
     private static bool TryStart(string file, string args)
     {

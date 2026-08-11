@@ -540,3 +540,45 @@ public class WindowsTerminalTests
         Assert.Contains(@"Set-Location 'C:\code\it''s'", command);
     }
 }
+
+
+public class WindowsArgumentQuotingTests
+{
+    /// A working directory comes out of a transcript, so it is not ours to trust. The same
+    /// class of hole that PR #2 closed on the macOS side, on the Windows command line.
+    [Fact]
+    public void APlainPathIsJustQuoted()
+    {
+        Assert.Equal("\"C:\\code\\orbit\"", Launcher.QuoteArgument(@"C:\code\orbit"));
+    }
+
+    [Fact]
+    public void AQuoteInThePathCannotEndTheArgument()
+    {
+        var quoted = Launcher.QuoteArgument(@"C:\a""b");
+        Assert.Equal("\"C:\\a\\\"b\"", quoted);
+        // Every quote after the first is escaped, so nothing after it is read as a new
+        // argument by the program being launched.
+        Assert.Equal(2, quoted.Count(c => c == '"') - CountEscapedQuotes(quoted));
+    }
+
+    [Fact]
+    public void TrailingBackslashesDoNotEscapeTheClosingQuote()
+    {
+        Assert.Equal("\"C:\\code\\\\\"", Launcher.QuoteArgument(@"C:\code\"));
+    }
+
+    [Fact]
+    public void AnEmptyPathIsStillOneArgument()
+    {
+        Assert.Equal("\"\"", Launcher.QuoteArgument(""));
+    }
+
+    private static int CountEscapedQuotes(string text)
+    {
+        var count = 0;
+        for (var i = 1; i < text.Length; i++)
+            if (text[i] == '"' && text[i - 1] == '\\') count++;
+        return count;
+    }
+}
