@@ -494,3 +494,49 @@ public class EmbedderTests
         Assert.NotEqual(a.Fingerprint, b.Fingerprint);
     }
 }
+
+
+public class WindowsTerminalTests
+{
+    /// The bug this covers: `wt` reads a semicolon as its own command separator, so
+    /// `Set-Location 'C:\code'; & 'claude' --resume 'id'` was split and the second half
+    /// looked up as a program. Windows Terminal answered
+    /// "error 2147942402 (0x80070002) ... The system cannot find the file specified".
+    [Fact]
+    public void WhatWindowsTerminalGetsHasNoSemicolonToSplitOn()
+    {
+        var run = Launcher.ResumeRun("claude", "6f8fc312");
+        Assert.DoesNotContain(";", run);
+        Assert.Contains("--resume '6f8fc312'", run);
+    }
+
+    [Fact]
+    public void AShellThatWasToldNothingStillGetsTheDirectory()
+    {
+        var command = Launcher.ResumeCommand("claude", @"C:\code\orbit", "abc");
+        Assert.StartsWith(@"Set-Location 'C:\code\orbit';", command);
+        Assert.EndsWith(Launcher.ResumeRun("claude", "abc"), command);
+    }
+
+    [Fact]
+    public void NoSessionIdIsAFreshSession()
+    {
+        Assert.Equal("& 'claude'", Launcher.ResumeRun("claude", null));
+        Assert.Equal("& 'codex'", Launcher.ResumeRun("claude", null, Agent.Codex));
+    }
+
+    [Fact]
+    public void CodexKeepsItsOwnShapeAndNoSemicolon()
+    {
+        var run = Launcher.ResumeRun("claude.ps1", "abc", Agent.Codex);
+        Assert.Equal("& 'codex' resume 'abc'", run);
+        Assert.DoesNotContain(";", run);
+    }
+
+    [Fact]
+    public void AQuoteInAPathCannotBreakOutOfEitherForm()
+    {
+        var command = Launcher.ResumeCommand("claude", @"C:\code\it's", "abc");
+        Assert.Contains(@"Set-Location 'C:\code\it''s'", command);
+    }
+}

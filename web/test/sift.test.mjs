@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { humanText, assistantText, parseTranscript, listTranscripts, decodeProjectDir, displayName }
   from '../lib/scanner.mjs';
 import { IndexStore, ftsQuery } from '../lib/index-store.mjs';
-import { quoteForShell, powershellCommand, posixScript } from '../lib/terminal.mjs';
+import { quoteForShell, powershellCommand, powershellRun, posixScript } from '../lib/terminal.mjs';
 import { reindex, config } from '../sift.mjs';
 import * as codex from '../lib/codex.mjs';
 import { archiveSize, restore, archivePathFor } from '../lib/archive.mjs';
@@ -367,4 +367,24 @@ test('discovery skips a server with no embedding model and finds one that has it
 
   const nothing = await emb.discover(async () => { throw new Error('refused'); });
   assert.equal(nothing, null);
+});
+
+test('what Windows Terminal gets has no semicolon to split on', () => {
+  // wt reads a semicolon as its own command separator, so a compound command was split and
+  // the second half looked up as a program: "error 2147942402 (0x80070002) ... The system
+  // cannot find the file specified".
+  const run = powershellRun({ claude: 'claude', sessionId: '6f8fc312' });
+  assert.ok(!run.includes(';'), run);
+  assert.match(run, /--resume '6f8fc312'/);
+
+  const codex = powershellRun({ claude: 'claude', sessionId: 'abc', agent: 'codex' });
+  assert.equal(codex, "& 'codex' resume 'abc'");
+
+  assert.equal(powershellRun({ claude: 'claude' }), "& 'claude'");
+});
+
+test('a shell that was told nothing still gets the directory', () => {
+  const command = powershellCommand({ claude: 'claude', cwd: 'C:\\code', sessionId: 'abc' });
+  assert.match(command, /^Set-Location 'C:\\code';/);
+  assert.ok(command.endsWith(powershellRun({ claude: 'claude', sessionId: 'abc' })));
 });

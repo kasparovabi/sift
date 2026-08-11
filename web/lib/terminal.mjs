@@ -25,12 +25,20 @@ function resumeFlags(agent, sessionId, windows) {
   return `${flag} ${quoteForShell(id, windows)}`;
 }
 
-export function powershellCommand({ claude = 'claude', cwd, sessionId, agent = 'claude' }) {
-  const parts = [`Set-Location ${quoteForShell(cwd, true)}`];
-  parts.push(sessionId
+/// Just the command, with nothing in front of it. Kept separate from the working-directory
+/// part because Windows Terminal reads a semicolon as its own command separator. Hand `wt` a
+/// compound command and it splits there, then looks up the second half as a program and
+/// reports "the system cannot find the file specified" with your shell command quoted back.
+export function powershellRun({ claude = 'claude', sessionId, agent = 'claude' }) {
+  return sessionId
     ? `& ${program(agent, claude, true)} ${resumeFlags(agent, sessionId, true)}`
-    : `& ${program(agent, claude, true)}`);
-  return parts.join('; ');
+    : `& ${program(agent, claude, true)}`;
+}
+
+/// The same command with the working directory in front, for a shell that was not told
+/// where to start.
+export function powershellCommand({ claude = 'claude', cwd, sessionId, agent = 'claude' }) {
+  return `Set-Location ${quoteForShell(cwd, true)}; ${powershellRun({ claude, sessionId, agent })}`;
 }
 
 export function posixScript({ claude = 'claude', cwd, sessionId, agent = 'claude' }) {
@@ -47,13 +55,17 @@ export function openSession({ cwd, sessionId, claude = 'claude', agent = 'claude
   const dir = cwd && cwd.length ? cwd : homedir();
 
   if (isWindows) {
-    const command = powershellCommand({ claude, cwd: dir, sessionId, agent });
-    const psArgs = ['-NoExit', '-NoLogo', '-Command', command];
-    const child = spawn('wt.exe', ['-d', dir, 'powershell', ...psArgs], {
+    // wt is told the directory with -d, so the command it carries needs no Set-Location and
+    // therefore no semicolon for wt to split on. The plain shell was told nothing, so it
+    // gets the compound form.
+    const forTerminal = ['-NoExit', '-NoLogo', '-Command', powershellRun({ claude, sessionId, agent })];
+    const forShell = ['-NoExit', '-NoLogo', '-Command',
+                      powershellCommand({ claude, cwd: dir, sessionId, agent })];
+    const child = spawn('wt.exe', ['-d', dir, 'powershell', ...forTerminal], {
       detached: true, stdio: 'ignore', windowsHide: false,
     });
     child.on('error', () => {
-      spawn('powershell.exe', psArgs, { detached: true, stdio: 'ignore' }).unref();
+      spawn('powershell.exe', forShell, { detached: true, stdio: 'ignore' }).unref();
     });
     child.unref();
     return { via: 'windows-terminal' };

@@ -16,21 +16,32 @@ public static class Launcher
     public const string Utf8Prelude =
         "$OutputEncoding = [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false); ";
 
-    /// Hands the session back to whichever agent wrote it, by the id its own transcript
-    /// records: `claude --resume <id>`, or `codex resume <id>`.
-    public static string ResumeCommand(string claude, string cwd, string? sessionId,
-                                       Agent agent = Agent.ClaudeCode)
+    /// Just the command that hands the session back to whichever agent wrote it, with
+    /// nothing in front of it.
+    ///
+    /// Kept separate from the working-directory part because Windows Terminal reads a
+    /// semicolon as its own command separator. Hand `wt` a compound command and it splits
+    /// there, then looks up the second half as a program and reports
+    /// "the system cannot find the file specified" with your shell command quoted back.
+    public static string ResumeRun(string claude, string? sessionId,
+                                   Agent agent = Agent.ClaudeCode)
     {
         // claude is resolved to a path Sift knows; codex comes off PATH, which the shell
         // running this command has already set up.
         var program = agent == Agent.ClaudeCode ? Quote(claude) : Quote(agent.Command());
-        var run = sessionId is null
-            ? $"& {program}"
-            // The id is quoted, the flag is not: a flag is ours and fixed, and quoting it
-              // reads as an argument in some shells rather than an option.
-            : $"& {program} {string.Join(" ", agent.ResumeArguments(sessionId).Select((a, i) => i == 0 ? a : Quote(a)))}";
-        return $"Set-Location {Quote(cwd)}; {run}";
+        if (sessionId is null) return $"& {program}";
+        // The id is quoted, the flag is not: a flag is ours and fixed, and quoting it reads
+        // as an argument in some shells rather than an option.
+        var arguments = agent.ResumeArguments(sessionId)
+                             .Select((a, i) => i == 0 ? a : Quote(a));
+        return $"& {program} {string.Join(" ", arguments)}";
     }
+
+    /// The same command with the working directory in front, for a shell that was not told
+    /// where to start.
+    public static string ResumeCommand(string claude, string cwd, string? sessionId,
+                                       Agent agent = Agent.ClaudeCode) =>
+        $"Set-Location {Quote(cwd)}; {ResumeRun(claude, sessionId, agent)}";
 
     /// `claude -p` alone prints nothing until the whole run is over, which leaves a spinner
     /// and no idea whether anything is happening. The streaming format emits an event per
@@ -44,11 +55,13 @@ public static class Launcher
                                    Agent agent = Agent.ClaudeCode)
     {
         var dir = Directory.Exists(cwd) ? cwd : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        var command = ResumeCommand(claude, dir, sessionId, agent);
-        var psArgs = $"-NoExit -NoLogo -Command \"{command.Replace("\"", "\\\"")}\"";
+        // wt is told the directory with -d, so the command it carries needs no Set-Location
+        // and therefore no semicolon for wt to split on.
+        var forTerminal = Escape(ResumeRun(claude, sessionId, agent));
+        var forShell = Escape(ResumeCommand(claude, dir, sessionId, agent));
 
-        if (!TryStart("wt.exe", $"-d \"{dir}\" powershell {psArgs}"))
-            TryStart("powershell.exe", psArgs);
+        if (!TryStart("wt.exe", $"-d \"{dir}\" powershell -NoExit -NoLogo -Command \"{forTerminal}\""))
+            TryStart("powershell.exe", $"-NoExit -NoLogo -Command \"{forShell}\"");
     }
 
     public static void RevealFolder(string? path)
@@ -57,6 +70,8 @@ public static class Launcher
             ? path : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         TryStart("explorer.exe", $"\"{dir}\"");
     }
+
+    private static string Escape(string command) => command.Replace("\"", "\\\"");
 
     private static bool TryStart(string file, string args)
     {
