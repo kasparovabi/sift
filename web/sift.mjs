@@ -18,6 +18,7 @@ import { spawn } from 'node:child_process';
 
 import { listTranscripts, parseTranscript, displayName, decodeProjectDir } from './lib/scanner.mjs';
 import * as codex from './lib/codex.mjs';
+import { hiddenProjects } from './lib/hidden.mjs';
 import { IndexStore } from './lib/index-store.mjs';
 import { openSession, revealFolder, isWindows } from './lib/terminal.mjs';
 import { keep, restore, archiveSize, archivePathFor, currentRetentionDays, setRetentionDays, FOREVER }
@@ -131,7 +132,7 @@ export function createApp(store, cfg) {
       }
 
       if (url.pathname === '/api/search') {
-        const rows = store.search({
+        const rows = store.search({ hidden: hiddenProjects(cfg.supportDir),
           query: url.searchParams.get('q') || '',
           projectId: url.searchParams.get('project') || null,
           since: url.searchParams.get('since') ? Number(url.searchParams.get('since')) : null,

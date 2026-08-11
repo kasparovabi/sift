@@ -1,4 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
+import { hiddenPredicate } from './hidden.mjs';
 
 /// Sessions nobody started. Sift's own knowledge extraction runs `claude -p`, and every one of
 /// those runs is itself a session written to disk, so the library fills up with copies of
@@ -143,7 +144,7 @@ export class IndexStore {
   /// Ranked search. The column weights put a title match above a body match, the same
   /// ordering the macOS app uses. Column 3 is fullText, which is what a snippet comes from.
   search({ query = '', projectId = null, since = null, limit = 60,
-           onlyUserSessions = true } = {}) {
+           onlyUserSessions = true, hidden = [] } = {}) {
     const trimmed = query.trim();
 
     if (!trimmed) {
@@ -152,6 +153,7 @@ export class IndexStore {
       if (projectId) { where.push('projectId = ?'); args.push(projectId); }
       if (since) { where.push('lastActivity >= ?'); args.push(since); }
       if (onlyUserSessions) where.push(userSessionPredicate());
+      if (onlyUserSessions && hiddenPredicate(hidden)) where.push(hiddenPredicate(hidden));
       return this.db.prepare(`
         SELECT * FROM session ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
         ORDER BY lastActivity DESC LIMIT ?
@@ -163,6 +165,7 @@ export class IndexStore {
     if (projectId) { where.push('s.projectId = ?'); args.push(projectId); }
     if (since) { where.push('s.lastActivity >= ?'); args.push(since); }
     if (onlyUserSessions) where.push(userSessionPredicate('s'));
+    if (onlyUserSessions && hiddenPredicate(hidden, 's')) where.push(hiddenPredicate(hidden, 's'));
     args.push(limit);
 
     return this.db.prepare(`

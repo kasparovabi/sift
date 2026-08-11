@@ -702,3 +702,42 @@ public class MachineSessionTests
         Assert.Empty(store.Projects());
     }
 }
+
+
+public class HiddenProjectTests
+{
+    [Fact]
+    public void AFolderCoversItselfAndEverythingUnderIt()
+    {
+        Assert.True(HiddenProjects.Covers(@"A:\harness", @"A:\harness"));
+        Assert.True(HiddenProjects.Covers(@"A:\harness", @"A:\harness\sandbox\run1"));
+        Assert.True(HiddenProjects.Covers(@"A:\harness", @"A:\harness\"));
+        // Matched on whole components, so hiding one folder does not hide its neighbour.
+        Assert.False(HiddenProjects.Covers(@"A:\harness", @"A:\harness-notes"));
+        Assert.False(HiddenProjects.Covers(@"A:\harness", @"A:\other"));
+        Assert.False(HiddenProjects.Covers(@"A:\harness\sandbox", @"A:\harness"));
+    }
+
+    [Fact]
+    public void NothingHiddenAddsNothingToTheQuery()
+    {
+        Assert.Equal("", HiddenProjects.Predicate([]));
+    }
+
+    [Fact]
+    public void TheClauseNamesBothTheFolderAndWhatIsUnderIt()
+    {
+        var clause = HiddenProjects.Predicate([@"A:\harness"]);
+        Assert.StartsWith("NOT (", clause);
+        Assert.Contains(@"= 'A:\harness'", clause);
+        Assert.Contains("LIKE", clause);
+    }
+
+    [Fact]
+    public void AQuoteInAPathCannotBreakTheQuery()
+    {
+        var clause = HiddenProjects.Predicate([@"A:\it's"]);
+        Assert.Contains("''", clause);
+        Assert.DoesNotContain("= 'A:\\it's'", clause);
+    }
+}

@@ -165,7 +165,14 @@ public sealed class IndexStore : IDisposable
 
     public int Count(bool onlyUserSessions = true)
     {
-        var where = onlyUserSessions ? $"WHERE {MachineSessions.Predicate()}" : "";
+        var clauses = new List<string>();
+        if (onlyUserSessions)
+        {
+            clauses.Add(MachineSessions.Predicate());
+            if (HiddenProjects.Predicate(HiddenProjects.All()) is { Length: > 0 } skip)
+                clauses.Add(skip);
+        }
+        var where = clauses.Count == 0 ? "" : "WHERE " + string.Join(" AND ", clauses);
         using var cmd = Cmd($"SELECT count(*) FROM session {where}");
         return Convert.ToInt32(cmd.ExecuteScalar());
     }
@@ -179,6 +186,12 @@ public sealed class IndexStore : IDisposable
     /// projects: on the machine this was built against, 737 of them were subfolders of one
     /// real project. The session's own `cwd` still has the true path, so a cwd that sits
     /// under another session's cwd is rolled up into it.
+    private static string HiddenClause()
+    {
+        var predicate = HiddenProjects.Predicate(HiddenProjects.All(), "s");
+        return predicate.Length == 0 ? "" : "AND " + predicate;
+    }
+
     public List<ProjectRow> Projects()
     {
         var counts = new Dictionary<string, (int Count, long? Last)>(StringComparer.OrdinalIgnoreCase);
@@ -194,7 +207,7 @@ public sealed class IndexStore : IDisposable
                      s.projectId) AS path,
                    count(*), max(s.lastActivity)
             FROM session s
-            WHERE {MachineSessions.Predicate("s")}
+            WHERE {MachineSessions.Predicate("s")} {HiddenClause()}
             GROUP BY path
             """))
         using (var r = cmd.ExecuteReader())
@@ -313,6 +326,9 @@ public sealed class IndexStore : IDisposable
     {
         var trimmed = (query ?? "").Trim();
         var hits = new List<SearchHit>();
+        // Read once per query rather than once per clause, so the file is not opened twice
+        // for a single search.
+        var hidden = onlyUserSessions ? HiddenProjects.All() : [];
 
         SqliteCommand cmd;
         if (trimmed.Length == 0)
@@ -326,7 +342,11 @@ public sealed class IndexStore : IDisposable
                 args.Add(LikePrefix(projectPath));
             }
             if (since is not null) { where.Add($"lastActivity >= @p{args.Count}"); args.Add(since); }
-            if (onlyUserSessions) where.Add(MachineSessions.Predicate());
+            if (onlyUserSessions)
+            {
+                where.Add(MachineSessions.Predicate());
+                if (HiddenProjects.Predicate(hidden) is { Length: > 0 } skip) where.Add(skip);
+            }
             args.Add(limit);
             cmd = Cmd($"""
                 SELECT sessionId, projectId, filePath, cwd, gitBranch, title, firstMessage,
@@ -346,7 +366,11 @@ public sealed class IndexStore : IDisposable
                 args.Add(LikePrefix(projectPath));
             }
             if (since is not null) { where.Add($"s.lastActivity >= @p{args.Count}"); args.Add(since); }
-            if (onlyUserSessions) where.Add(MachineSessions.Predicate("s"));
+            if (onlyUserSessions)
+            {
+                where.Add(MachineSessions.Predicate("s"));
+                if (HiddenProjects.Predicate(hidden, "s") is { Length: > 0 } skip) where.Add(skip);
+            }
             args.Add(limit);
             cmd = Cmd($"""
                 SELECT s.sessionId, s.projectId, s.filePath, s.cwd, s.gitBranch, s.title,
@@ -389,7 +413,7 @@ public sealed class IndexStore : IDisposable
 
     /// LIKE pattern matching everything under a directory, with the wildcards SQLite would
     /// otherwise read inside the path escaped.
-    internal static string LikePrefix(string path)
+    public static string LikePrefix(string path)
     {
         var escaped = path.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_");
         // A separator, then a real wildcard. The separator is itself escaped because the

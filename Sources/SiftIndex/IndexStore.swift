@@ -255,7 +255,14 @@ public final class IndexStore: Sendable {
             if let since = filters.since { conditions.append("session.lastActivity >= ?"); conditionArgs.append(since) }
             // Hide tool-spawned sessions at the source so the 500-row cap is filled with
             // real work, not observer/memory/extraction noise (mirrors isUserStarted).
-            if filters.excludeTools { conditions.append(Self.userSessionPredicate) }
+            if filters.excludeTools {
+            conditions.append(Self.userSessionPredicate)
+            // Folders the user has taken out of the list. Read per query rather than held,
+            // so editing the file shows up on the next search without a restart.
+            if let hidden = HiddenProjects.predicate(HiddenProjects.all()) {
+                conditions.append(hidden)
+            }
+        }
 
             if let pattern {
                 // snippet() marks matches with char(1)…char(2) so the UI can highlight them.

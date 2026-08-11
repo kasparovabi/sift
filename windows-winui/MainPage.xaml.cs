@@ -410,14 +410,82 @@ public sealed partial class MainPage : Page
                 Icon = new FontIcon { Glyph = "" },
                 InfoBadge = new InfoBadge { Value = project.Count },
             });
-            ToolTipService.SetToolTip((NavigationViewItem)Nav.MenuItems[^1], project.Path);
+            var entry = (NavigationViewItem)Nav.MenuItems[^1];
+            ToolTipService.SetToolTip(entry, project.Path);
+            entry.ContextFlyout = HideFlyout(project.Path);
+        }
+
+        if (HiddenProjects.All().Count > 0)
+        {
+            Nav.MenuItems.Add(new NavigationViewItem
+            {
+                Content = "Hidden folders", Tag = "hidden",
+                Icon = new FontIcon { Glyph = "\uE7B3" },
+                InfoBadge = new InfoBadge { Value = HiddenProjects.All().Count },
+            });
         }
         Nav.SelectedItem = Nav.MenuItems[0];
+    }
+
+    /// A harness that gives every run its own folder leaves hundreds of sessions nobody had.
+    /// Which folders are machinery is a judgement only the person whose machine it is can
+    /// make, so it is a list they build rather than a rule Sift guesses at.
+    private MenuFlyout HideFlyout(string path)
+    {
+        var hide = new MenuFlyoutItem { Text = "Hide this folder", Icon = new FontIcon { Glyph = "\uED1A" } };
+        hide.Click += (_, _) =>
+        {
+            HiddenProjects.Hide(path);
+            BuildSources();
+            Refresh();
+            StatusLine.Text = $"Hidden: {Scanner.DisplayName(path)}";
+        };
+        var flyout = new MenuFlyout();
+        flyout.Items.Add(hide);
+        return flyout;
+    }
+
+    private async void ShowHiddenFolders()
+    {
+        var hidden = HiddenProjects.All();
+        var list = new StackPanel { Spacing = 8 };
+        foreach (var path in hidden)
+        {
+            var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
+            var restore = new Button { Content = "Show" };
+            var name = path;
+            restore.Click += (_, _) =>
+            {
+                HiddenProjects.Show(name);
+                BuildSources();
+                Refresh();
+            };
+            row.Children.Add(restore);
+            row.Children.Add(new TextBlock
+            {
+                Text = path, VerticalAlignment = VerticalAlignment.Center,
+                TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 420,
+            });
+            list.Children.Add(row);
+        }
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = "Hidden folders",
+            Content = new ScrollViewer { Content = list, MaxHeight = 360 },
+            CloseButtonText = "Done",
+        };
+        await dialog.ShowAsync();
+        BuildSources();
+        Refresh();
     }
 
     private void SourceSelected(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
         if (args.SelectedItem is not NavigationViewItem item || item.Tag is not string tag) return;
+
+        if (tag == "hidden") { ShowHiddenFolders(); return; }
 
         var isTool = tag is "quick" or "loops" or "brain";
         SessionsView.Visibility = isTool ? Visibility.Collapsed : Visibility.Visible;

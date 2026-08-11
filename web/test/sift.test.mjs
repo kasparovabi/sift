@@ -12,6 +12,7 @@ import { reindex, config } from '../sift.mjs';
 import * as codex from '../lib/codex.mjs';
 import { archiveSize, restore, archivePathFor } from '../lib/archive.mjs';
 import { existsSync } from 'node:fs';
+import { covers, hiddenPredicate } from '../lib/hidden.mjs';
 
 /// A test that indexes a fixture must not also read the machine's own Codex sessions.
 const NO_CODEX = join(tmpdir(), 'sift-no-codex');
@@ -461,4 +462,34 @@ test('other tools\' machine sessions are filtered too', () => {
   const hits = store.search({ query: 'orbit' });
   assert.deepEqual(hits.map((h) => h.sessionId), ['real']);
   store.close();
+});
+
+test('a hidden folder takes its sessions out of the list', () => {
+  const store = new IndexStore(':memory:');
+  const base = { filePath: 'f', gitBranch: null, entrypoint: 'cli', version: null,
+                 startedAt: 1, lastActivity: 1, messageCount: 2, toolCallCount: 0,
+                 fileSize: 1, fileMtime: 1, agent: 'claude', fullText: 'orbit' };
+  store.upsert({ ...base, sessionId: 'harness', cwd: 'A:\\harness\\sandbox\\run1',
+                 title: 'a', firstMessage: 'orbit' }, 'p');
+  store.upsert({ ...base, sessionId: 'neighbour', cwd: 'A:\\harness-notes',
+                 title: 'b', firstMessage: 'orbit' }, 'p');
+  store.upsert({ ...base, sessionId: 'mine', cwd: 'C:\\code\\orbit',
+                 title: 'c', firstMessage: 'orbit' }, 'p');
+
+  const all = store.search({ query: 'orbit' }).map((r) => r.sessionId).sort();
+  assert.deepEqual(all, ['harness', 'mine', 'neighbour']);
+
+  const kept = store.search({ query: 'orbit', hidden: ['A:\\harness'] })
+    .map((r) => r.sessionId).sort();
+  // The neighbour survives: hiding is matched on whole path components.
+  assert.deepEqual(kept, ['mine', 'neighbour']);
+  store.close();
+});
+
+test('a folder covers itself and everything under it', () => {
+  assert.ok(covers('A:\\harness', 'A:\\harness'));
+  assert.ok(covers('A:\\harness', 'A:\\harness\\sandbox\\run1'));
+  assert.ok(!covers('A:\\harness', 'A:\\harness-notes'));
+  assert.ok(!covers('A:\\harness\\sandbox', 'A:\\harness'));
+  assert.equal(hiddenPredicate([]), '', 'nothing hidden adds nothing to the query');
 });
