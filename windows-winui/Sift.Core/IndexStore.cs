@@ -49,15 +49,17 @@ public sealed class IndexStore : IDisposable
               fileSize INTEGER NOT NULL, fileMtime INTEGER NOT NULL,
               agent TEXT NOT NULL DEFAULT 'claude');
             CREATE INDEX IF NOT EXISTS session_project ON session(projectId);
-            CREATE INDEX IF NOT EXISTS session_agent ON session(agent);
             CREATE INDEX IF NOT EXISTS session_activity ON session(lastActivity);
             CREATE VIRTUAL TABLE IF NOT EXISTS session_ft USING fts5(
               sessionId UNINDEXED, title, firstMessage, fullText,
               tokenize='unicode61', prefix='2 3');
             """);
         // An index written before Sift read more than one agent has no such column, and
-        // CREATE TABLE IF NOT EXISTS will not add it.
+        // CREATE TABLE IF NOT EXISTS will not add it. This has to happen before anything
+        // that names the column: an index over it, created in the same breath as the table,
+        // is what stopped the app opening on every database that already existed.
         AddColumnIfMissing("session", "agent", "TEXT NOT NULL DEFAULT 'claude'");
+        Exec("CREATE INDEX IF NOT EXISTS session_agent ON session(agent)");
     }
 
     private void AddColumnIfMissing(string table, string column, string definition)

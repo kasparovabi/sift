@@ -388,3 +388,29 @@ test('a shell that was told nothing still gets the directory', () => {
   assert.match(command, /^Set-Location 'C:\\code';/);
   assert.ok(command.endsWith(powershellRun({ claude: 'claude', sessionId: 'abc' })));
 });
+
+test('an index written before agents still opens', () => {
+  // A fresh database gets the column from CREATE TABLE, so every test that started from
+  // :memory: passed while every real machine failed to open at all.
+  const store = new IndexStore(':memory:');
+  store.db.exec(`
+    DROP TABLE session;
+    CREATE TABLE session (
+      sessionId TEXT PRIMARY KEY, projectId TEXT NOT NULL, filePath TEXT NOT NULL,
+      cwd TEXT, gitBranch TEXT, title TEXT, firstMessage TEXT, entrypoint TEXT,
+      version TEXT, startedAt INTEGER, lastActivity INTEGER,
+      messageCount INTEGER NOT NULL DEFAULT 0, toolCallCount INTEGER NOT NULL DEFAULT 0,
+      fileSize INTEGER NOT NULL, fileMtime INTEGER NOT NULL,
+      archived INTEGER NOT NULL DEFAULT 0);
+    INSERT INTO session (sessionId, projectId, filePath, fileSize, fileMtime)
+    VALUES ('s1', 'p', 'f', 1, 1);
+  `);
+
+  store.addColumnIfMissing('session', 'agent', "TEXT NOT NULL DEFAULT 'claude'");
+  store.db.exec('CREATE INDEX IF NOT EXISTS session_agent ON session(agent)');
+
+  const rows = store.search({ query: '' });
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].agent, 'claude', 'an old row is a Claude Code row');
+  store.close();
+});

@@ -26,13 +26,19 @@ export class IndexStore {
         agent TEXT NOT NULL DEFAULT 'claude'
       );
       CREATE INDEX IF NOT EXISTS session_project ON session(projectId);
-      CREATE INDEX IF NOT EXISTS session_agent ON session(agent);
       CREATE INDEX IF NOT EXISTS session_activity ON session(lastActivity);
       CREATE VIRTUAL TABLE IF NOT EXISTS session_ft USING fts5(
         sessionId UNINDEXED, title, firstMessage, fullText,
         tokenize='unicode61', prefix='2 3'
       );
     `);
+
+    // An index written before Sift read more than one agent has no such column, and
+    // CREATE TABLE IF NOT EXISTS will not add it. This runs before anything that names the
+    // column, because an index over a column that is not there yet fails outright and takes
+    // the whole app down on every database that already existed.
+    this.addColumnIfMissing('session', 'agent', "TEXT NOT NULL DEFAULT 'claude'");
+    this.db.exec('CREATE INDEX IF NOT EXISTS session_agent ON session(agent)');
   }
 
   close() { this.db.close(); }
@@ -40,6 +46,12 @@ export class IndexStore {
   fingerprints() {
     const rows = this.db.prepare('SELECT filePath, fileSize, fileMtime FROM session').all();
     return new Map(rows.map((r) => [r.filePath, { size: r.fileSize, mtime: r.fileMtime }]));
+  }
+
+  addColumnIfMissing(table, column, definition) {
+    const columns = this.db.prepare(`PRAGMA table_info(${table})`).all();
+    if (columns.some((c) => c.name === column)) return;
+    this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
   }
 
   upsert(row, project) {

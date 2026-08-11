@@ -1,3 +1,4 @@
+using Microsoft.Data.Sqlite;
 using SiftWinUI.Core;
 using Xunit;
 
@@ -580,5 +581,49 @@ public class WindowsArgumentQuotingTests
         for (var i = 1; i < text.Length; i++)
             if (text[i] == '"' && text[i - 1] == '\\') count++;
         return count;
+    }
+}
+
+
+public class UpgradeTests
+{
+    /// The app stopped opening for anyone who already had an index. A fresh database gets
+    /// the column from CREATE TABLE, so every test that started from :memory: passed while
+    /// every real machine failed.
+    [Fact]
+    public void AnIndexWrittenBeforeAgentsStillOpens()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"sift-old-{Guid.NewGuid()}.sqlite");
+        try
+        {
+            using (var old = new SqliteConnection($"Data Source={path}"))
+            {
+                old.Open();
+                using var cmd = old.CreateCommand();
+                cmd.CommandText = """
+                    CREATE TABLE session (
+                      sessionId TEXT PRIMARY KEY, projectId TEXT NOT NULL, filePath TEXT NOT NULL,
+                      cwd TEXT, gitBranch TEXT, title TEXT, firstMessage TEXT, entrypoint TEXT,
+                      startedAt INTEGER, lastActivity INTEGER,
+                      messageCount INTEGER NOT NULL DEFAULT 0, toolCallCount INTEGER NOT NULL DEFAULT 0,
+                      fileSize INTEGER NOT NULL, fileMtime INTEGER NOT NULL);
+                    INSERT INTO session (sessionId, projectId, filePath, fileSize, fileMtime)
+                    VALUES ('s1', 'p', 'f', 1, 1);
+                    CREATE VIRTUAL TABLE session_ft USING fts5(
+                      sessionId UNINDEXED, title, firstMessage, fullText,
+                      tokenize='unicode61', prefix='2 3');
+                    """;
+                cmd.ExecuteNonQuery();
+            }
+
+            using var store = new IndexStore(path);
+            var row = Assert.Single(store.Search(""));
+            Assert.Equal(Agent.ClaudeCode, row.Agent);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            File.Delete(path);
+        }
     }
 }
