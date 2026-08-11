@@ -232,6 +232,24 @@ index, so they behave the same.
 
 ---
 
+## What the list shows
+
+Sessions you started. Not the ones your tools started.
+
+Every knowledge extraction is a `claude -p` run, and every one of those is itself a session
+written to disk, so turning extraction on fills the library with copies of Sift's own prompt.
+Those are filtered out, along with the memory and observer runs other tools leave behind. None
+of it is deleted; it is left out of the browser, the counts and the project list, which all use
+the same rule so they agree.
+
+A harness that gives every run its own directory is the other half of the problem, and no rule
+can tell that scratch space apart from a real project. So it is a list you build: right-click a
+folder in the pane and hide it, and everything under it goes too. A "Hidden folders" entry
+appears with a way to bring any of them back. The list is plain text at
+`hidden-projects.txt` in the data directory, shared by all three versions and editable by hand.
+
+---
+
 ## Unlimited retention
 
 Claude Code deletes transcripts older than `cleanupPeriodDays`, 30 by default. Sift keeps its
@@ -286,6 +304,7 @@ Data lives in `~/Library/Application Support/Sift`:
 | `index.sqlite` | Session index and full-text search. Rebuildable. | About 160 KB per session: 5,000 sessions came to 836 MB on the machine this was built on |
 | `brain.sqlite` | Extracted knowledge and the entity graph. Not rebuildable. | A few MB |
 | `loops.sqlite` | Loop definitions and their evidence. | Small |
+| `hidden-projects.txt` | Folders left out of the list, one path per line. | Tiny |
 
 The index is full-text, so it holds a searchable copy of your transcripts. That is where the
 size comes from. Delete it whenever you like; the next launch rebuilds it.
