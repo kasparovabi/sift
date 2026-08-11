@@ -1,4 +1,19 @@
 import { DatabaseSync } from 'node:sqlite';
+
+/// Sessions nobody started. Sift's own knowledge extraction runs `claude -p`, and every one of
+/// those runs is itself a session written to disk, so the library fills up with copies of
+/// Sift's own prompt. Searching your own work should not mean wading through the machinery.
+export const EXTRACTION_MARKER = 'Extract DURABLE, REUSABLE knowledge';
+
+export function userSessionPredicate(table = 'session') {
+  return `(${table}.entrypoint IS NULL OR ${table}.entrypoint NOT LIKE 'sdk-%') AND
+          (${table}.cwd IS NULL OR ${table}.cwd NOT LIKE '%.claude-mem%') AND
+          (${table}.firstMessage IS NULL OR (
+            ${table}.firstMessage NOT LIKE 'Hello memory agent%' AND
+            ${table}.firstMessage NOT LIKE 'You are a Claude-Mem%' AND
+            ${table}.firstMessage NOT LIKE '${EXTRACTION_MARKER}%'))`;
+}
+
 import { mkdirSync, existsSync } from 'node:fs';
 import { dirname } from 'node:path';
 
@@ -112,8 +127,9 @@ export class IndexStore {
     return removed;
   }
 
-  count() {
-    return this.db.prepare('SELECT count(*) n FROM session').get().n;
+  count({ onlyUserSessions = true } = {}) {
+    const where = onlyUserSessions ? `WHERE ${userSessionPredicate()}` : '';
+    return this.db.prepare(`SELECT count(*) AS n FROM session ${where}`).get().n;
   }
 
   projects() {
@@ -126,7 +142,8 @@ export class IndexStore {
 
   /// Ranked search. The column weights put a title match above a body match, the same
   /// ordering the macOS app uses. Column 3 is fullText, which is what a snippet comes from.
-  search({ query = '', projectId = null, since = null, limit = 60 } = {}) {
+  search({ query = '', projectId = null, since = null, limit = 60,
+           onlyUserSessions = true } = {}) {
     const trimmed = query.trim();
 
     if (!trimmed) {
@@ -134,6 +151,7 @@ export class IndexStore {
       const args = [];
       if (projectId) { where.push('projectId = ?'); args.push(projectId); }
       if (since) { where.push('lastActivity >= ?'); args.push(since); }
+      if (onlyUserSessions) where.push(userSessionPredicate());
       return this.db.prepare(`
         SELECT * FROM session ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
         ORDER BY lastActivity DESC LIMIT ?
@@ -144,6 +162,7 @@ export class IndexStore {
     const where = [];
     if (projectId) { where.push('s.projectId = ?'); args.push(projectId); }
     if (since) { where.push('s.lastActivity >= ?'); args.push(since); }
+    if (onlyUserSessions) where.push(userSessionPredicate('s'));
     args.push(limit);
 
     return this.db.prepare(`

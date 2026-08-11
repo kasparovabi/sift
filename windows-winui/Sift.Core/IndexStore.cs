@@ -20,6 +20,26 @@ public sealed class SearchHit
 
 public sealed record ProjectRow(string Id, string Path, string Name, int Count, long? LastActivity);
 
+/// Sessions nobody started. Sift's own knowledge extraction runs `claude -p`, and every one
+/// of those runs is itself a session Claude Code writes to disk, so the library fills up with
+/// copies of Sift's own prompt. Other tools do the same with their memory and observer runs.
+/// Searching your own work should not mean wading through the machinery.
+public static class MachineSessions
+{
+    /// Must stay equal to Extractor.InstructionMarker; a test fails the build if they drift.
+    public const string ExtractionMarker = "Extract DURABLE, REUSABLE knowledge";
+
+    /// SQL over the `session` table, true for a session a person started.
+    public static string Predicate(string table = "session") => $"""
+        ({table}.entrypoint IS NULL OR {table}.entrypoint NOT LIKE 'sdk-%') AND
+        ({table}.cwd IS NULL OR {table}.cwd NOT LIKE '%.claude-mem%') AND
+        ({table}.firstMessage IS NULL OR (
+          {table}.firstMessage NOT LIKE 'Hello memory agent%' AND
+          {table}.firstMessage NOT LIKE 'You are a Claude-Mem%' AND
+          {table}.firstMessage NOT LIKE '{ExtractionMarker}%'))
+        """;
+}
+
 /// The same shape the macOS app keeps: a session table plus an FTS5 mirror, with the
 /// transcripts on disk staying the source of truth. Delete the file and it rebuilds.
 ///
@@ -143,9 +163,10 @@ public sealed class IndexStore : IDisposable
         return gone.Count;
     }
 
-    public int Count()
+    public int Count(bool onlyUserSessions = true)
     {
-        using var cmd = Cmd("SELECT count(*) FROM session");
+        var where = onlyUserSessions ? $"WHERE {MachineSessions.Predicate()}" : "";
+        using var cmd = Cmd($"SELECT count(*) FROM session {where}");
         return Convert.ToInt32(cmd.ExecuteScalar());
     }
 
@@ -165,14 +186,16 @@ public sealed class IndexStore : IDisposable
         // cannot be decoded back into a path: every separator became a dash, and so did any
         // dash already in the name. Without this, two sessions missing a cwd show up as a
         // second copy of a project that is already listed.
-        using (var cmd = Cmd("""
+        using (var cmd = Cmd($"""
             SELECT COALESCE(
                      s.cwd,
                      (SELECT o.cwd FROM session o
                        WHERE o.projectId = s.projectId AND o.cwd IS NOT NULL LIMIT 1),
                      s.projectId) AS path,
                    count(*), max(s.lastActivity)
-            FROM session s GROUP BY path
+            FROM session s
+            WHERE {MachineSessions.Predicate("s")}
+            GROUP BY path
             """))
         using (var r = cmd.ExecuteReader())
             while (r.Read())
@@ -285,7 +308,8 @@ public sealed class IndexStore : IDisposable
 
     /// Ranked search. The column weights put a title match above a body match, the same
     /// ordering the macOS app uses. Column 3 is fullText, which the snippet comes from.
-    public List<SearchHit> Search(string query, string? projectPath = null, long? since = null, int limit = 200)
+    public List<SearchHit> Search(string query, string? projectPath = null, long? since = null,
+                                  int limit = 200, bool onlyUserSessions = true)
     {
         var trimmed = (query ?? "").Trim();
         var hits = new List<SearchHit>();
@@ -302,6 +326,7 @@ public sealed class IndexStore : IDisposable
                 args.Add(LikePrefix(projectPath));
             }
             if (since is not null) { where.Add($"lastActivity >= @p{args.Count}"); args.Add(since); }
+            if (onlyUserSessions) where.Add(MachineSessions.Predicate());
             args.Add(limit);
             cmd = Cmd($"""
                 SELECT sessionId, projectId, filePath, cwd, gitBranch, title, firstMessage,
@@ -321,6 +346,7 @@ public sealed class IndexStore : IDisposable
                 args.Add(LikePrefix(projectPath));
             }
             if (since is not null) { where.Add($"s.lastActivity >= @p{args.Count}"); args.Add(since); }
+            if (onlyUserSessions) where.Add(MachineSessions.Predicate("s"));
             args.Add(limit);
             cmd = Cmd($"""
                 SELECT s.sessionId, s.projectId, s.filePath, s.cwd, s.gitBranch, s.title,

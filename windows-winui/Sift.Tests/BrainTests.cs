@@ -627,3 +627,78 @@ public class UpgradeTests
         }
     }
 }
+
+
+public class MachineSessionTests
+{
+    /// Searching "rauf" returned a screenful of "Extract DURABLE, REUSABLE knowledge from the
+    /// Claude Code session transcript below" — Sift's own prompt, handed back as if it were
+    /// work someone had done.
+    [Fact]
+    public void SiftsOwnExtractionRunsStayOutOfSearchResults()
+    {
+        using var store = new IndexStore(":memory:");
+        void Add(string id, string first, string text, string entry = "cli", string cwd = @"C:\code") =>
+            store.Upsert(new SessionRow
+            {
+                SessionId = id, ProjectId = "p", FilePath = "f", Cwd = cwd, Entrypoint = entry,
+                Title = first[..Math.Min(40, first.Length)], FirstMessage = first, FullText = text,
+                MessageCount = 2, FileSize = 1, FileMtime = 1,
+            });
+
+        Add("mine", "Rauf Tuncer icin bir site yapalim", "Rauf Tuncer web sitesi isi");
+        Add("machine", MachineSessions.ExtractionMarker + " from the transcript below.",
+            "Rauf Tuncer web sitesi isi teklif");
+
+        var hits = store.Search("rauf");
+        Assert.Equal("mine", Assert.Single(hits).SessionId);
+        Assert.Single(store.Search(""));
+        Assert.Equal(1, store.Count());
+
+        // Nothing was deleted, so it is still reachable when asked for.
+        Assert.Equal(2, store.Search("rauf", onlyUserSessions: false).Count);
+        Assert.Equal(2, store.Count(onlyUserSessions: false));
+    }
+
+    [Fact]
+    public void OtherToolsMachineSessionsAreFilteredToo()
+    {
+        using var store = new IndexStore(":memory:");
+        void Add(string id, string first, string entry, string cwd) =>
+            store.Upsert(new SessionRow
+            {
+                SessionId = id, ProjectId = "p", FilePath = "f", Cwd = cwd, Entrypoint = entry,
+                Title = id, FirstMessage = first, FullText = "orbit",
+                MessageCount = 2, FileSize = 1, FileMtime = 1,
+            });
+
+        Add("sdk", "orbit", "sdk-python", @"C:\code");
+        Add("mem", "Hello memory agent, orbit", "cli", @"C:\code");
+        Add("memdir", "orbit", "cli", @"C:\x\.claude-mem\y");
+        Add("real", "orbit is slow", "cli", @"C:\code");
+
+        Assert.Equal("real", Assert.Single(store.Search("orbit")).SessionId);
+    }
+
+    [Fact]
+    public void TheMarkerMatchesTheOneExtractionActuallySends()
+    {
+        // If these drift, the filter stops matching and the noise comes back.
+        Assert.Equal(Extractor.InstructionMarker, MachineSessions.ExtractionMarker);
+        Assert.StartsWith(MachineSessions.ExtractionMarker, Extractor.Instruction);
+    }
+
+    [Fact]
+    public void TheProjectListCountsTheSameSessionsTheBrowserShows()
+    {
+        using var store = new IndexStore(":memory:");
+        store.Upsert(new SessionRow
+        {
+            SessionId = "machine", ProjectId = "p", FilePath = "f", Cwd = @"C:\code",
+            Entrypoint = "cli", Title = "x",
+            FirstMessage = MachineSessions.ExtractionMarker + " ...", FullText = "x",
+            MessageCount = 2, FileSize = 1, FileMtime = 1,
+        });
+        Assert.Empty(store.Projects());
+    }
+}

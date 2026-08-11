@@ -6,7 +6,7 @@ import { join } from 'node:path';
 
 import { humanText, assistantText, parseTranscript, listTranscripts, decodeProjectDir, displayName }
   from '../lib/scanner.mjs';
-import { IndexStore, ftsQuery } from '../lib/index-store.mjs';
+import { IndexStore, ftsQuery, EXTRACTION_MARKER } from '../lib/index-store.mjs';
 import { quoteForShell, powershellCommand, powershellRun, posixScript } from '../lib/terminal.mjs';
 import { reindex, config } from '../sift.mjs';
 import * as codex from '../lib/codex.mjs';
@@ -412,5 +412,53 @@ test('an index written before agents still opens', () => {
   const rows = store.search({ query: '' });
   assert.equal(rows.length, 1);
   assert.equal(rows[0].agent, 'claude', 'an old row is a Claude Code row');
+  store.close();
+});
+
+test('Sift\'s own extraction runs stay out of your search results', () => {
+  // Searching "rauf" returned a screenful of "Extract DURABLE, REUSABLE knowledge from the
+  // Claude Code session transcript below" — Sift's own prompt, handed back as if it were work.
+  const store = new IndexStore(':memory:');
+  const base = { filePath: 'f', cwd: '/code', gitBranch: null, entrypoint: 'cli', version: null,
+                 startedAt: 1, lastActivity: 1, messageCount: 2, toolCallCount: 0,
+                 fileSize: 1, fileMtime: 1, agent: 'claude' };
+
+  store.upsert({ ...base, sessionId: 'mine', title: 'Rauf Tuncer web sitesi',
+                 firstMessage: 'Rauf Tuncer için bir site yapalım',
+                 fullText: 'Rauf Tuncer web sitesi işi' }, 'p');
+  store.upsert({ ...base, sessionId: 'machine', title: 'Extract DURABLE, REUSABLE knowledge',
+                 firstMessage: EXTRACTION_MARKER + ' from the Claude Code session transcript below.',
+                 fullText: 'Rauf Tuncer web sitesi işi teklif' }, 'p');
+
+  const hits = store.search({ query: 'rauf' });
+  assert.equal(hits.length, 1, 'only the session a person started');
+  assert.equal(hits[0].sessionId, 'mine');
+
+  assert.equal(store.search({ query: '' }).length, 1, 'and the same when just listing');
+  assert.equal(store.count(), 1);
+
+  // Still reachable when asked for, because nothing was deleted.
+  assert.equal(store.search({ query: 'rauf', onlyUserSessions: false }).length, 2);
+  assert.equal(store.count({ onlyUserSessions: false }), 2);
+  store.close();
+});
+
+test('other tools\' machine sessions are filtered too', () => {
+  const store = new IndexStore(':memory:');
+  const base = { filePath: 'f', cwd: '/code', gitBranch: null, version: null,
+                 startedAt: 1, lastActivity: 1, messageCount: 2, toolCallCount: 0,
+                 fileSize: 1, fileMtime: 1, agent: 'claude', fullText: 'orbit' };
+
+  store.upsert({ ...base, sessionId: 'sdk', entrypoint: 'sdk-python',
+                 title: 'a', firstMessage: 'orbit' }, 'p');
+  store.upsert({ ...base, sessionId: 'mem', entrypoint: 'cli',
+                 title: 'b', firstMessage: 'Hello memory agent, orbit' }, 'p');
+  store.upsert({ ...base, sessionId: 'memdir', entrypoint: 'cli', cwd: '/x/.claude-mem/y',
+                 title: 'c', firstMessage: 'orbit' }, 'p');
+  store.upsert({ ...base, sessionId: 'real', entrypoint: 'cli',
+                 title: 'd', firstMessage: 'orbit is slow' }, 'p');
+
+  const hits = store.search({ query: 'orbit' });
+  assert.deepEqual(hits.map((h) => h.sessionId), ['real']);
   store.close();
 });
